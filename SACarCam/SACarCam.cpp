@@ -279,7 +279,11 @@ void LoadSettings()
 	if (dot) strcpy(dot, ".ini");
 
 	if (GetFileAttributesA(iniPath) == INVALID_FILE_ATTRIBUTES) {
-		if (GetFileAttributesA(".\\SACarCam.ini") != INVALID_FILE_ATTRIBUTES) {
+		if (GetFileAttributesA(".\\ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
+			strcpy(iniPath, ".\\ModernCarCam.ini");
+		} else if (GetFileAttributesA(".\\scripts\\ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
+			strcpy(iniPath, ".\\scripts\\ModernCarCam.ini");
+		} else if (GetFileAttributesA(".\\SACarCam.ini") != INVALID_FILE_ATTRIBUTES) {
 			strcpy(iniPath, ".\\SACarCam.ini");
 		} else if (GetFileAttributesA(".\\scripts\\SACarCam.ini") != INVALID_FILE_ATTRIBUTES) {
 			strcpy(iniPath, ".\\scripts\\SACarCam.ini");
@@ -335,23 +339,23 @@ void registerDebugMenu() {
 	if (!debugMenuLoaded) {
 		if (DebugMenuLoad()) {
 			if (isLCS)
-				DebugMenuAddCmd("SACarCam", "Camera profile: LCS", nil);
+				DebugMenuAddCmd("ModernCarCam", "Camera profile: LCS", nil);
 			else
-				DebugMenuAddCmd("SACarCam", "Camera profile: SA", nil);
+				DebugMenuAddCmd("ModernCarCam", "Camera profile: SA", nil);
 
-			DebugMenuAddVarBool8("SACarCam", "Camera wobble", (int8*)&cameraWobble, nil);
-			DebugMenuAddVarBool8("SACarCam", "Elastic string physics", (int8*)&elasticStringPhysics, nil);
-			DebugMenuAddVarBool8("SACarCam", "Pitch slope tilt", (int8*)&pitchTilt, nil);
-			DebugMenuAddVarBool8("SACarCam", "Dynamic speed FOV", (int8*)&dynamicSpeedFOV, nil);
-			DebugMenuAddVarBool8("SACarCam", "Vehicle-specific zoom", (int8*)&vehicleSpecificZoom, nil);
-			DebugMenuAddVarBool8("SACarCam", "Modern turret control", (int8*)&modernTurretControl, nil);
-			DebugMenuAddVarBool8("SACarCam", "Modern drive-by", (int8*)&modernDriveBy, nil);
-			DebugMenuAddVarBool8("SACarCam", "Mouse free-look", (int8*)&mouseFreeLook, nil);
-			DebugMenuAddVarBool8("SACarCam", "Zoom on widescreen", (int8*)&zoomOnWidescreen, nil);
-			DebugMenuAddVarBool8("SACarCam", "SA bikes cam raise with passenger", (int8*)&heightIncreaseOnBike, nil);
-			DebugMenuAddVarBool8("SACarCam", "Use LCS alpha angles", (int8*)&useLCSalphaValues, nil);
-			DebugMenuAddVarBool8("SACarCam", "Fix Camera clipping through the model bug", (int8*)&fixTheBug, nil);
-			DebugMenuAddVarBool8("SACarCam", "Don't keep camera over water", (int8*)&seeUnderwater, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Camera wobble", (int8*)&cameraWobble, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Elastic string physics", (int8*)&elasticStringPhysics, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Pitch slope tilt", (int8*)&pitchTilt, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Dynamic speed FOV", (int8*)&dynamicSpeedFOV, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Vehicle-specific zoom", (int8*)&vehicleSpecificZoom, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Modern turret control", (int8*)&modernTurretControl, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Modern drive-by", (int8*)&modernDriveBy, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Mouse free-look", (int8*)&mouseFreeLook, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Zoom on widescreen", (int8*)&zoomOnWidescreen, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "SA bikes cam raise with passenger", (int8*)&heightIncreaseOnBike, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Use LCS alpha angles", (int8*)&useLCSalphaValues, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Fix Camera clipping through the model bug", (int8*)&fixTheBug, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Don't keep camera over water", (int8*)&seeUnderwater, nil);
 			debugMenuLoaded = 2;
 		} else
 			debugMenuLoaded = 1;
