@@ -238,6 +238,9 @@ Multiply3x3(const CVector& vec, const CMatrix& mat)
 		mat.m_matrix.at.x * vec.x + mat.m_matrix.at.y * vec.y + mat.m_matrix.at.z * vec.z);
 }
 
+void WellBufferMe(float Target, float* CurrentValue, float* CurrentSpeed, float MaxSpeed, float Acceleration, bool IsAngle);
+bool cameraWobble = true;
+
 int previousMode = 0;
 
 static void OnGInputSettingsReload()
@@ -255,6 +258,7 @@ void registerDebugMenu() {
 			DebugMenuAddCmd("SACarCam", "You're using r6-regular version.", nil);
 #endif
 			DebugMenuAddVarBool8("SACarCam", "Zoom on widescreen", (int8*)&zoomOnWidescreen, nil);
+			DebugMenuAddVarBool8("SACarCam", "Camera wobble", (int8*)&cameraWobble, nil);
 			DebugMenuAddVarBool8("SACarCam", "SA bikes cam raise with passenger", (int8*)&heightIncreaseOnBike, nil);
 			DebugMenuAddVarBool8("SACarCam", "Use LCS alpha angles", (int8*)&useLCSalphaValues, nil);
 			DebugMenuAddVarBool8("SACarCam", "Fix Camera clipping through the model bug", (int8*)&fixTheBug, nil);
@@ -528,6 +532,8 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		cam->ResetStatics = false;
 		cam->Rotating = false;
 		cam->m_bCollisionChecksOn = true;
+		cam->f_Roll = 0.0f;
+		cam->f_rollSpeed = 0.0f;
 		// TheCamera.m_bResetOldMatrix = 1;
 
 		// Garage exit cam is not working well in III...
@@ -896,6 +902,38 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 	cam->Front.x = -(cos(cam->Beta) * cos(cam->Alpha));
 	cam->Front.y = -(sin(cam->Beta) * cos(cam->Alpha));
 	cam->Front.z = sin(cam->Alpha);
+
+	// Steering camera wobble (authentic Vice City roll & inertia)
+	float targetRoll = 0.0f;
+	bool manualCameraMovement = mouseChangesBeta || fabsf(stickX) > 0.05f || fabsf(stickY) > 0.05f || !nextDirectionIsForward;
+	if (cameraWobble && (isCar || isBike || car->IsBoat()) && !manualCameraMovement) {
+		float forwardSpeed = DotProduct(car->m_vecMoveSpeed, car->GetForward()) * 180.0f;
+		if (forwardSpeed > 210.0f)
+			forwardSpeed = 210.0f;
+		else if (forwardSpeed < -210.0f)
+			forwardSpeed = -210.0f;
+
+		float steer = (float)pad->GetSteeringLeftRight();
+		float steerFactor = (steer / 128.0f) * (forwardSpeed / 210.0f);
+
+		float alignment = clamp(fabsf(DotProduct(car->GetForward(), cam->Front)), 0.0f, 1.0f);
+		steerFactor *= alignment;
+
+		int zoomMode = (int)TheCamera->CarZoomIndicator;
+		float zoomMult = 1.05f;
+		if (zoomMode == 2 || zoomMode == 3)
+			zoomMult = 0.0f;
+		else if (zoomMode >= 4)
+			zoomMult = 1.0f;
+
+		float maxRoll = cam->f_max_role_angle;
+		if (maxRoll == 0.0f)
+			maxRoll = DEGTORAD(5.0f);
+
+		targetRoll = steerFactor * (DEGTORAD(10.0f) * zoomMult + maxRoll);
+	}
+	WellBufferMe(targetRoll, &cam->f_Roll, &cam->f_rollSpeed, 0.15f, 0.07f, false);
+
 	cam->GetVectorsReadyForRW();
 	TheCamera->m_bCamDirectlyBehind = false;
 	TheCamera->m_bCamDirectlyInFront = false;
@@ -1196,31 +1234,33 @@ namespace BetterDriveBy {
 void
 CCamVC::GetVectorsReadyForRW(void)
 {
-	CVector right;
-	Up = CVector(0.0f, 0.0f, 1.0f);
 	Front.Normalise();
 	if (Front.x == 0.0f && Front.y == 0.0f) {
 		Front.x = 0.0001f;
 		Front.y = 0.0001f;
 	}
-	right = CrossProduct(Front, Up);
+	float rollAngle = HALFPI + f_Roll;
+	CVector upInit(cosf(rollAngle), 0.0f, sinf(rollAngle));
+	CVector right = CrossProduct(Front, upInit);
 	right.Normalise();
 	Up = CrossProduct(right, Front);
+	Up.Normalise();
 }
 
 void
 CCamIII::GetVectorsReadyForRW(void)
 {
-	CVector right;
-	Up = CVector(0.0f, 0.0f, 1.0f);
 	Front.Normalise();
 	if (Front.x == 0.0f && Front.y == 0.0f) {
 		Front.x = 0.0001f;
 		Front.y = 0.0001f;
 	}
-	right = CrossProduct(Front, Up);
+	float rollAngle = HALFPI + f_Roll;
+	CVector upInit(cosf(rollAngle), 0.0f, sinf(rollAngle));
+	CVector right = CrossProduct(Front, upInit);
 	right.Normalise();
 	Up = CrossProduct(right, Front);
+	Up.Normalise();
 }
 
 #define currentMode (isIII() ? TheCameraIII->Cams[TheCameraIII->ActiveCam].Mode : TheCameraVC->Cams[TheCameraVC->ActiveCam].Mode)

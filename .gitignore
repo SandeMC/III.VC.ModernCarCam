@@ -1,0 +1,15 @@
+# Visual Studio build artifacts
+.vs/
+*.user
+Release/
+Debug/
+ReleaseVC/
+DebugVC/
+ReleaseLCS/
+DebugLCS/
+SACarCam/Release/
+SACarCam/Debug/
+SACarCam/ReleaseVC/
+SACarCam/DebugVC/
+SACarCam/ReleaseLCS/
+SACarCam/DebugLCS/

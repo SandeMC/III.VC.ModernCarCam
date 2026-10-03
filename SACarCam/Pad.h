@@ -64,6 +64,7 @@ public:
 	int16 LookAroundUpDown(void);
 	int16 LookAroundLeftRight(void);
 	int16 GetSteeringUpDown(void);
+	int16 GetSteeringLeftRight(void);
 	int16 GetCarGunUpDown(void);
 	int16 GetCarGunLeftRight(void);
 	bool GetLookLeft(void);

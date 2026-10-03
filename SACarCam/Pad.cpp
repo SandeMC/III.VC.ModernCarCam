@@ -15,6 +15,7 @@ addr gllAddress = AddressByVersion<addr>(0x493290, 0, 0, 0x4AAC90, 0, 0);
 addr gcglrAddress = AddressByVersion<addr>(0x4930C0, 0, 0, 0x4AAEB0, 0, 0);
 addr gcgudAddress = AddressByVersion<addr>(0x493070, 0, 0, 0x4AAF00, 0, 0);
 addr gsudAddress = AddressByVersion<addr>(0x492FF0, 0, 0, 0x4AAF50, 0, 0);
+addr gslrAddress = AddressByVersion<addr>(0x492F70, 0, 0, 0x4AAFD0, 0, 0);
 addr lalrAddress = AddressByVersion<addr>(0x493F80, 0, 0, 0x4A9A80, 0, 0);
 addr laudAddress = AddressByVersion<addr>(0x494130, 0, 0, 0x4A98F0, 0, 0);
 
@@ -25,6 +26,7 @@ WRAPPER bool CPad::GetLookLeft(void) { EAXJMP(gllAddress); }
 WRAPPER int16 CPad::GetCarGunLeftRight(void) { EAXJMP(gcglrAddress); }
 WRAPPER int16 CPad::GetCarGunUpDown(void) { EAXJMP(gcgudAddress); }
 WRAPPER int16 CPad::GetSteeringUpDown(void) { EAXJMP(gsudAddress); }
+WRAPPER int16 CPad::GetSteeringLeftRight(void) { EAXJMP(gslrAddress); }
 
 // Unused
 WRAPPER int16 CPad::LookAroundLeftRight(void) { EAXJMP(lalrAddress); }
