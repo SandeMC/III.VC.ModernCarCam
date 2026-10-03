@@ -1,7 +1,14 @@
-# SACarCam / LCSCarCam with Modern Drive-By & Camera Tilt
+# SACarCam / LCSCarCam with Modern Drive-By & Restored Features
 
 Fork of [SACarCamWithModernDriveBy](https://github.com/ICantReadYourMind/SACarCamWithModernDriveBy).
 
-This fork restores the authentic vehicle camera wobble and steering roll/tilt physics (via `WellBufferMe`) from vanilla GTA Vice City and GTA III when the camera is not being manually moved with the mouse or analog stick.
+A single universal ASI compatible with both GTA III and GTA Vice City at runtime.
 
-Can be built as either `SACarCam` (SA camera profile) or `LCSCarCam` (LCS camera profile).
+### Features
+- Restores authentic vanilla car camera physics:
+  - Steering camera wobble and roll tilt when camera is idle
+  - Elastic string distance buffering (stretching on acceleration, catch-up on braking)
+  - Terrain slope and hill pitch tilt buffering
+- Configurable via `SACarCam.ini` or debug menu:
+  - Switch between SA and LCS camera profiles at runtime
+  - Toggle individual features (camera wobble, elastic string physics, pitch tilt, dynamic FOV, vehicle-specific zoom, modern turret control, modern drive-by, mouse free-look)
