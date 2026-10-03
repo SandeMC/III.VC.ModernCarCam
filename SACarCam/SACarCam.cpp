@@ -8,8 +8,9 @@
 #include "GInputAPI.h"
 #include "debugmenu_public.h"
 
-// Uncomment to make it LCS vehicle camera - defined or not, it will always be compatible with III / VC / Re:LCS
-#define LCS_CAM
+// Defined by project configuration (e.g. ReleaseLCS defines LCS_CAM).
+// If defined, it compiles as LCS vehicle camera (LCSCarCam); otherwise as SA vehicle camera (SACarCam).
+//#define LCS_CAM
 
 #define DefaultFOV 70.0f
 
