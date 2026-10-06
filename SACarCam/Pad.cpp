@@ -14,6 +14,8 @@ addr glrAddress = AddressByVersion<addr>(0x4932C0, 0, 0, 0x4AAC60, 0, 0);
 addr gllAddress = AddressByVersion<addr>(0x493290, 0, 0, 0x4AAC90, 0, 0);
 addr gcglrAddress = AddressByVersion<addr>(0x4930C0, 0, 0, 0x4AAEB0, 0, 0);
 addr gcgudAddress = AddressByVersion<addr>(0x493070, 0, 0, 0x4AAF00, 0, 0);
+// GetCarGunFired only exists on Vice City (used by the firetruck camera).
+addr gcgfAddress = AddressByVersion<addr>(0, 0, 0, 0x4AAA60, 0, 0);
 addr gsudAddress = AddressByVersion<addr>(0x492FF0, 0, 0, 0x4AAF50, 0, 0);
 addr gslrAddress = AddressByVersion<addr>(0x492F70, 0, 0, 0x4AAFD0, 0, 0);
 addr lalrAddress = AddressByVersion<addr>(0x493F80, 0, 0, 0x4A9A80, 0, 0);
@@ -25,6 +27,7 @@ WRAPPER bool CPad::GetLookRight(void) { EAXJMP(glrAddress); }
 WRAPPER bool CPad::GetLookLeft(void) { EAXJMP(gllAddress); }
 WRAPPER int16 CPad::GetCarGunLeftRight(void) { EAXJMP(gcglrAddress); }
 WRAPPER int16 CPad::GetCarGunUpDown(void) { EAXJMP(gcgudAddress); }
+WRAPPER bool CPad::GetCarGunFired(void) { EAXJMP(gcgfAddress); }
 WRAPPER int16 CPad::GetSteeringUpDown(void) { EAXJMP(gsudAddress); }
 WRAPPER int16 CPad::GetSteeringLeftRight(void) { EAXJMP(gslrAddress); }
 

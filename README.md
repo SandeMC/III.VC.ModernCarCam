@@ -15,16 +15,20 @@ the mod keeps both algorithms separate and layers its ini options on top.
 ## Vanilla accuracy
 
 With the default settings (`CameraProfile = Vanilla` and the "match game"
-feature defaults) the camera is a 1:1 reproduction of the original:
+feature defaults) the camera reproduces the original:
 
 - Correct base distance, target height and string physics per game
 - Correct per-zoom elevation angle (derived from the zoom value in GTA III,
   per-vehicle-type tables in Vice City)
 - Correct terrain pitch behaviour (level in GTA III, downhill tilt in Vice City)
+- GTA III roof/ground camera-height correction (WorkOutCamHeight)
+- Vice City geometry avoidance, helicopter height clamp and Firetruck cannon
+  camera tracking
+- The dedicated "behind boat" vehicle camera of both games
 - Correct steering roll/wobble (Vice City only), bike passenger camera height
   (Vice City only) and vehicle-specific zoom (Vice City only)
-- Dynamic speed FOV, which Vice City has and GTA III does not, is available in
-  both games as an option
+- Dynamic speed FOV, which Vice City has and GTA III does not, is available and
+  functional in both games as an option
 
 ## Full list of features
 

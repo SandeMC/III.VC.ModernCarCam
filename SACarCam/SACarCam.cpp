@@ -25,6 +25,7 @@
 //#define LCS_CAM
 
 #define DefaultFOV 70.0f
+#define DefaultNearClip 0.9f
 
 HMODULE dllModule, hDummyHandle;
 int gtaversion = -1;
@@ -233,6 +234,22 @@ WRAPPER bool CWorldVC::ProcessLineOfSight(const CVector& point1, const CVector& 
 addr tsawAddress = AddressByVersion<addr>(0x4B4710, 0, 0, 0x4D3F40, 0, 0);
 WRAPPER CEntity* CWorldIII::TestSphereAgainstWorld(CVector centre, float distance, CEntity* entityToIgnore, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSomeObjects) { EAXJMP(tsawAddress); }
 WRAPPER CEntity* CWorldVC::TestSphereAgainstWorld(CVector centre, float distance, CEntity* entityToIgnore, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSomeObjects) { EAXJMP(tsawAddress); }
+
+addr fgz3dAddress = AddressByVersion<addr>(0x4B3AE0, 0, 0, 0x4D53A0, 0, 0);
+WRAPPER float CWorldIII::FindGroundZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(fgz3dAddress); }
+WRAPPER float CWorldVC::FindGroundZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(fgz3dAddress); }
+
+addr frz3dAddress = AddressByVersion<addr>(0x4B3B50, 0, 0, 0x4D51D0, 0, 0);
+WRAPPER float CWorldIII::FindRoofZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(frz3dAddress); }
+WRAPPER float CWorldVC::FindRoofZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(frz3dAddress); }
+
+addr pvlAddress = AddressByVersion<addr>(0x4B0DE0, 0, 0, 0x4D8B00, 0, 0);
+WRAPPER bool CWorldIII::ProcessVerticalLine(const CVector& origin, float distance, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, CStoredCollPoly* outCollPoly) { EAXJMP(pvlAddress); }
+WRAPPER bool CWorldVC::ProcessVerticalLine(const CVector& origin, float distance, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, CStoredCollPoly* outCollPoly) { EAXJMP(pvlAddress); }
+
+addr loscAddress = AddressByVersion<addr>(0x4AEAA0, 0, 0, 0x4DA560, 0, 0);
+WRAPPER bool CWorldIII::GetIsLineOfSightClear(const CVector& origin, const CVector& target, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreSomeObjects) { EAXJMP(loscAddress); }
+WRAPPER bool CWorldVC::GetIsLineOfSightClear(const CVector& origin, const CVector& target, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreSomeObjects) { EAXJMP(loscAddress); }
 
 addr gwlnwAddress = AddressByVersion<addr>(0x555440, 0, 0, 0x5C2BE0, 0, 0);
 WRAPPER bool CWaterLevel::GetWaterLevelNoWaves(float fX, float fY, float fZ, float* pfOutLevel) { EAXJMP(gwlnwAddress); }
@@ -581,6 +598,252 @@ static bool IsVehicleSuspensionHigh(CCameraVC* camera) { return camera->m_bVehic
 static bool IsVehicleSuspensionHigh(CCameraIII*) { return false; }
 
 // ---------------------------------------------------------------------------
+// Vanilla "behind boat" camera (CCam::Process_BehindBoat).
+// GTA III and Vice City share this implementation, so it is reproduced here
+// as part of the vanilla preset.
+// ---------------------------------------------------------------------------
+template<class CamClass, class CameraClass, class VehicleClass, class WorldClass>
+void
+Process_BehindBoat_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, const CVector& CameraTarget, float TargetOrientation)
+{
+	static CColPoint colPoint;
+	static float TargetWhenChecksWereOn = 0.0f;
+	static float CenterObscuredWhenChecksWereOn = 0.0f;
+	static const float WaterZAddition = 2.75f;
+	static const float FixerForGoingBelowGround = 0.4f;
+	static const float AmountUp = 2.2f;
+
+	if (!car->IsVehicle()) {
+		cam->ResetStatics = false;
+		return;
+	}
+
+	CVector TargetCoors = CameraTarget;
+	float DeltaBeta = 0.0f;
+	float WaterLevel = 0.0f;
+	float s, c;
+
+	cam->Beta = GetATanOfXY(TargetCoors.x - cam->Source.x, TargetCoors.y - cam->Source.y);
+	cam->FOV = DefaultFOV;
+
+	if (cam->ResetStatics) {
+		CenterObscuredWhenChecksWereOn = 0.0f;
+		TargetWhenChecksWereOn = 0.0f;
+		cam->Beta = TargetOrientation + PI;
+	}
+
+	CWaterLevel::GetWaterLevelNoWaves(TargetCoors.x, TargetCoors.y, TargetCoors.z, &WaterLevel);
+	WaterLevel += WaterZAddition;
+	if (-FixerForGoingBelowGround < TargetCoors.z - WaterLevel)
+		WaterLevel += TargetCoors.z - WaterLevel - FixerForGoingBelowGround;
+
+	bool obscured;
+	if (cam->m_bCollisionChecksOn || cam->ResetStatics) {
+		const float zoom = TheCamera->CarZoomValueSmooth;
+		CVector testPoint;
+
+		c = cosf(TargetOrientation); s = sinf(TargetOrientation);
+		testPoint = zoom * CVector(-c, -s, 0.0f) + (zoom + 7.0f) * CVector(-c, -s, 0.0f) + TargetCoors;
+		testPoint.z = WaterLevel + zoom;
+		const bool test1 = WorldClass::GetIsLineOfSightClear(testPoint, TargetCoors, true, false, false, true, false, true, true);
+
+		c = cosf(TargetOrientation + 0.8f); s = sinf(TargetOrientation + DEGTORAD(40.0f));
+		testPoint = zoom * CVector(-c, -s, 0.0f) + (zoom + 7.0f) * CVector(-c, -s, 0.0f) + TargetCoors;
+		testPoint.z = WaterLevel + zoom;
+		const bool test2 = WorldClass::GetIsLineOfSightClear(testPoint, TargetCoors, true, false, false, true, false, true, true);
+
+		c = cosf(TargetOrientation - 0.8f); s = sinf(TargetOrientation - DEGTORAD(40.0f));
+		testPoint = zoom * CVector(-c, -s, 0.0f) + (zoom + 7.0f) * CVector(-c, -s, 0.0f) + TargetCoors;
+		testPoint.z = WaterLevel + zoom;
+		const bool test3 = WorldClass::GetIsLineOfSightClear(testPoint, TargetCoors, true, false, false, true, false, true, true);
+
+		if (!test2) {
+			DeltaBeta = TargetOrientation - cam->Beta - DEGTORAD(40.0f);
+			if (cam->ResetStatics)
+				cam->Beta = TargetOrientation - DEGTORAD(40.0f);
+		} else if (!test3) {
+			DeltaBeta = TargetOrientation - cam->Beta + DEGTORAD(40.0f);
+			if (cam->ResetStatics)
+				cam->Beta = TargetOrientation + DEGTORAD(40.0f);
+		} else if (!test1) {
+			DeltaBeta = 0.0f;
+		} else {
+			if (cam->ResetStatics)
+				cam->Beta = TargetOrientation;
+			DeltaBeta = TargetOrientation - cam->Beta;
+		}
+
+		c = cosf(cam->Beta); s = sinf(cam->Beta);
+		testPoint.x = zoom * -c + (zoom + 7.0f) * -c + TargetCoors.x;
+		testPoint.y = zoom * -s + (zoom + 7.0f) * -s + TargetCoors.y;
+		testPoint.z = WaterLevel + zoom;
+		CEntity* entity = nil;
+		obscured = WorldClass::ProcessLineOfSight(testPoint, TargetCoors, colPoint, entity, true, false, false, true, false, true, true);
+		CenterObscuredWhenChecksWereOn = obscured ? 1.0f : 0.0f;
+
+		TargetWhenChecksWereOn = DeltaBeta + cam->Beta;
+	} else {
+		obscured = CenterObscuredWhenChecksWereOn != 0.0f;
+	}
+
+	if (obscured) {
+		CEntity* entity = nil;
+		WorldClass::ProcessLineOfSight(cam->Source, TargetCoors, colPoint, entity, true, false, false, true, false, true, true);
+		cam->Source = colPoint.point;
+	} else {
+		WellBufferMe(TargetWhenChecksWereOn, &cam->Beta, &cam->BetaSpeed, 0.07f, 0.015f, true);
+
+		const float zoom = TheCamera->CarZoomValueSmooth;
+		s = sinf(cam->Beta); c = cosf(cam->Beta);
+		cam->Source = zoom * CVector(-c, -s, 0.0f) + (zoom + 7.0f) * CVector(-c, -s, 0.0f) + TargetCoors;
+		cam->Source.z = WaterLevel + zoom;
+	}
+
+	if (TheCamera->CarZoomValueSmooth < 0.05f)
+		TargetCoors.z += AmountUp * (0.0f - TheCamera->CarZoomValueSmooth);
+	TargetCoors.z += TheCamera->CarZoomValueSmooth + 0.5f;
+
+	cam->m_cvecTargetCoorsForFudgeInter = TargetCoors;
+	cam->Front = TargetCoors - cam->Source;
+	cam->GetVectorsReadyForRW();
+	cam->ResetStatics = false;
+}
+
+
+// ---------------------------------------------------------------------------
+// Vice City "behind boat" camera (reVC CCam::Process_BehindBoat).
+// The Vice City boat camera differs from the GTA III one, so it is a
+// separate implementation.
+// ---------------------------------------------------------------------------
+template<class CamClass, class CameraClass, class VehicleClass, class WorldClass, class ColModelClass>
+void
+Process_BehindBoat_VC(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, const CVector& CameraTarget, float TargetOrientation)
+{
+	const float MAX_HEIGHT_UP = 15.0f;
+	const float WATER_Z_ADDITION = 2.75f;
+	const float WATER_Z_ADDITION_MIN = 1.5f;
+	const float SMALLBOAT_CLOSE_ALPHA_MINUS = 0.2f;
+	const float afBoatBetaDiffMult[3] = { 0.15f, 0.07f, 0.01f };
+	const float afBoatBetaSpeedDiffMult[3] = { 0.02f, 0.015f, 0.005f };
+
+	static float TargetWhenChecksWereOn = 0.0f;
+	static float CenterObscuredWhenChecksWereOn = 0.0f;
+	static float WaterLevelBuffered = 0.0f;
+	static float WaterLevelSpeed = 0.0f;
+
+	if (!car->IsVehicle()) {
+		cam->ResetStatics = false;
+		return;
+	}
+
+	CVector TargetCoors = CameraTarget;
+	float WaterLevel = 0.0f;
+	float BetaDiffMult = 0.0f;
+	float BetaSpeedDiffMult = 0.0f;
+
+	cam->Beta = GetATanOfXY(TargetCoors.x - cam->Source.x, TargetCoors.y - cam->Source.y);
+	cam->FOV = DefaultFOV;
+	float targetAlpha = 0.0f;
+
+	if (cam->ResetStatics) {
+		CenterObscuredWhenChecksWereOn = 0.0f;
+		TargetWhenChecksWereOn = 0.0f;
+	} else if (cam->DirectionWasLooking != LOOKING_FORWARD) {
+		cam->Beta = TargetOrientation;
+	}
+
+	if (!CWaterLevel::GetWaterLevelNoWaves(TargetCoors.x, TargetCoors.y, TargetCoors.z, &WaterLevel))
+		WaterLevel = TargetCoors.z - 0.5f;
+	if (cam->ResetStatics) {
+		WaterLevelBuffered = WaterLevel;
+		WaterLevelSpeed = 0.0f;
+	}
+	WellBufferMe(WaterLevel, &WaterLevelBuffered, &WaterLevelSpeed, 0.2f, 0.07f, false);
+
+	const float fixerForGoingBelowGround = 0.4f;
+	if (-fixerForGoingBelowGround < TargetCoors.z - WaterLevelBuffered + WATER_Z_ADDITION)
+		WaterLevelBuffered += TargetCoors.z - WaterLevelBuffered + WATER_Z_ADDITION - fixerForGoingBelowGround;
+
+	ColModelClass* carCol = (ColModelClass*)car->GetColModel();
+	const CVector boatDimensions = carCol->boundingBox.max - carCol->boundingBox.min;
+	float boatSize = boatDimensions.Magnitude2D();
+
+	const bool isHeli = (GetHandlingFlags(car) & 0x20000) != 0;
+	const bool isBike = (GetHandlingFlags(car) & 0x10000) != 0 || car->IsBike();
+	const bool isPlane = (isIII() && car->m_modelIndex == MI_III_DODO) || (GetHandlingFlags(car) & 0x40000);
+	const bool isCar = car->IsCar() && !isHeli && !isBike && !isPlane;
+	const int index = isCar ? 0 : (isBike ? 1 : (isHeli ? 2 : (isPlane ? 3 : 4)));
+
+	if ((int)TheCamera->CarZoomIndicator == 1) {
+		targetAlpha = ZmOneAlphaOffsetVC[index];
+		BetaDiffMult = afBoatBetaDiffMult[0];
+		BetaSpeedDiffMult = afBoatBetaSpeedDiffMult[0];
+	} else if ((int)TheCamera->CarZoomIndicator == 2) {
+		targetAlpha = ZmTwoAlphaOffsetVC[index];
+		BetaDiffMult = afBoatBetaDiffMult[1];
+		BetaSpeedDiffMult = afBoatBetaSpeedDiffMult[1];
+	} else if ((int)TheCamera->CarZoomIndicator == 3) {
+		targetAlpha = ZmThreeAlphaOffsetVC[index];
+		BetaDiffMult = afBoatBetaDiffMult[2];
+		BetaSpeedDiffMult = afBoatBetaSpeedDiffMult[2];
+	}
+	if ((int)TheCamera->CarZoomIndicator == 1 && boatSize < 10.0f) {
+		targetAlpha -= SMALLBOAT_CLOSE_ALPHA_MINUS;
+		boatSize = 10.0f;
+	}
+
+	if (cam->ResetStatics) {
+		cam->Alpha = targetAlpha;
+		cam->AlphaSpeed = 0.0f;
+	}
+	WellBufferMe(targetAlpha, &cam->Alpha, &cam->AlphaSpeed, 0.15f, 0.07f, true);
+
+	if (cam->ResetStatics) {
+		cam->Beta = TargetOrientation;
+		cam->BetaSpeed = 0.0f;
+	}
+	WellBufferMe(TargetOrientation, &cam->Beta, &cam->BetaSpeed,
+		BetaDiffMult * car->m_vecMoveSpeed.Magnitude(), BetaSpeedDiffMult, true);
+
+	cam->Source = (TheCamera->CarZoomValueSmooth + boatSize) * CVector(-cosf(cam->Beta), -sinf(cam->Beta), 0.0f) + TargetCoors;
+	cam->Source.z = WaterLevelBuffered + WATER_Z_ADDITION + (boatDimensions.z / 2.0f + MAX_HEIGHT_UP) * sinf(cam->Alpha);
+
+	cam->m_cvecTargetCoorsForFudgeInter = TargetCoors;
+
+	// AvoidTheGeometry: keep the camera out of the world (approximated with a
+	// line-of-sight clip, as in the mod's other camera paths).
+	{
+		pIgnoreEntity = (CEntity*)car;
+		CColPoint colPoint;
+		CEntity* entity = nil;
+		if (WorldClass::ProcessLineOfSight(TargetCoors, cam->Source, colPoint, entity, true, false, false, true, false, false, true))
+			cam->Source = colPoint.point;
+		pIgnoreEntity = nil;
+	}
+
+	cam->Front = TargetCoors - cam->Source;
+	cam->Front.Normalise();
+
+	// Steering roll (Vice City vanilla)
+	float targetRoll = 0.0f;
+	if (cameraWobble) {
+		float fwdSpeed = 180.0f * DotProduct(car->m_vecMoveSpeed, car->GetForward());
+		if (fwdSpeed > 210.0f)
+			fwdSpeed = 210.0f;
+		const float steer = (float)pad0.GetSteeringLeftRight() / 128.0f;
+		CVector fwdTarget = car->GetForward();
+		fwdTarget.Normalise();
+		const float angleDiff = acosf(clamp(fabsf(DotProduct(fwdTarget, cam->Front)), 0.0f, 1.0f));
+		targetRoll = steer * (fwdSpeed / 210.0f) * (DEGTORAD(10.0f) * TiltOverShoot[index] + cam->f_max_role_angle) * sinf(angleDiff);
+	}
+	WellBufferMe(targetRoll, &cam->f_Roll, &cam->f_rollSpeed, 0.15f, 0.07f, false);
+
+	cam->GetVectorsReadyForRW();
+	cam->ResetStatics = false;
+}
+
+
+// ---------------------------------------------------------------------------
 // Vanilla "camera on a string" vehicle camera.
 //
 // This reproduces the original vehicle camera of both games. GTA III and
@@ -606,6 +869,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	static float heliTiltSpeed = 0.0f;
 	static float stepsLeftToChangeBetaByMouse = 0.0f;
 	static float heightIncreaseMult = 0.0f;
+	static bool PreviousNearCheckNearClipSmall = false;
 
 	if (!car->IsVehicle())
 		return;
@@ -658,7 +922,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		heightIncreaseMult = 0.0f;
 	}
 
-	if (isHeli && car->m_status != STATUS_PLAYER_REMOTE)
+	if (vc && isHeli && car->m_status != STATUS_PLAYER_REMOTE)
 		TargetCoors += 0.6f * car->GetUp() * Dimensions.z;
 	else
 		TargetCoors.z += vc ? 0.8f * Dimensions.z : (Dimensions.z - 0.1f);
@@ -785,6 +1049,17 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	cam->Beta = GetATanOfXY(TargetCoors.x - cam->Source.x, TargetCoors.y - cam->Source.y);
 	cam->Alpha = LimitRadianAngle(cam->Alpha);
 	cam->Beta = LimitRadianAngle(cam->Beta);
+
+	// Vice City: when stationary and firing the Firetruck water cannon, the camera
+	// follows the turret so the player can aim. (Process_Cam_On_A_String)
+	if (vc && car->m_modelIndex == FireTruk && pad->GetCarGunFired() && car->m_vecMoveSpeed.Magnitude2D() < 0.01f) {
+		float targetBeta = LimitRadianAngle(car->GetForward().Heading() - *GetDoomAnglePtrLR(car) + HALFPI);
+		float firetruckDeltaBeta = LimitRadianAngle(targetBeta - cam->Beta);
+		float dist = (TargetCoors - cam->Source).Magnitude();
+		dist = 0.1f * dist * clamp(firetruckDeltaBeta, -0.8f, 0.8f);
+		cam->Source += dist * CrossProduct(cam->Front, CVector(0.0f, 0.0f, 1.0f));
+	}
+
 	cam->m_fDistanceBeforeChanges = (cam->Source - TargetCoors).Magnitude2D();
 
 	// ---- Mouse free-look (ported from the San Andreas camera) ----
@@ -857,13 +1132,37 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		float carAlpha = LimitRadianAngle(GetATanOfXY(forward.Magnitude2D(), forward.z));
 		float deltaBeta = LimitRadianAngle(cam->Beta - TargetOrientation);
 		carAlpha = -carAlpha * cosf(deltaBeta);
+		const float length = (cam->Source - TargetCoors).Magnitude2D();
 
 		int effectivePitchTilt = pitchTilt;
 		if (effectivePitchTilt == 2)
 			effectivePitchTilt = vc ? 1 : 0;
 
 		if (vc) {
-			// Vice City: level when driving uphill, elevated on downhill descents.
+			// Vice City: the Firetruck cannon pitches the camera while firing.
+			if (car->m_modelIndex == FireTruk && pad->GetCarGunFired()) {
+				carAlpha = DEGTORAD(10.0f);
+			} else if (isHeli && effectivePitchTilt != 0 && length != 0.0f) {
+				carAlpha = 0.0f;
+				const float heliFwdSpeed = DotProduct(car->m_vecMoveSpeed, forward) * 180.0f;
+				const float heliFwdZ = forward.z;
+				const float heliFwdXY = forward.Magnitude2D();
+				const float alphaAmount = min(fabsf(heliFwdSpeed / 90.0f), 1.0f);
+				if (heliFwdXY != 0.0f || heliFwdZ != 0.0f)
+					carAlpha = GetATanOfXY(heliFwdXY, fabsf(heliFwdZ)) * alphaAmount;
+
+				CColPoint point;
+				CEntity* entity = nil;
+				CVector test = cam->Source;
+				test.z = TargetCoors.z + 0.2f + length * sinf(carAlpha + AlphaOffset) + cam->m_fCloseInCarHeightOffset;
+				if (WorldClass::ProcessVerticalLine(test, car->GetPosition().z, point, entity, true, false, false, false, false, false, nil)) {
+					const float sinV = (point.point.z - TargetCoors.z - 0.2f - cam->m_fCloseInCarHeightOffset) / length;
+					carAlpha = asinf(clamp(sinV, -1.0f, 1.0f)) - AlphaOffset;
+					if (carAlpha < 0.0f)
+						AlphaOffset += carAlpha;
+				}
+			}
+
 			if (effectivePitchTilt == 1)
 				carAlpha = clamp(carAlpha, 0.0f, DEGTORAD(89.0f));
 			else if (effectivePitchTilt == 3)
@@ -885,7 +1184,12 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 					WellBufferMe(targetAlpha, &cam->Alpha, &cam->AlphaSpeed, 0.15f, 0.07f, true);
 			}
 		} else {
-			// GTA III: nearly level with a small dead-zone.
+			// GTA III: nearly level with a small dead-zone plus roof/ground checks
+			// (WorkOutCamHeight).
+			float topAlphaSpeed = 0.15f;
+			float alphaSpeedStep = 0.015f;
+			bool camClear = true;
+
 			if (effectivePitchTilt == 0) {
 				if (carAlpha < -0.01f)
 					carAlpha = -0.01f;
@@ -907,14 +1211,95 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			else
 				deltaAlpha = 0.0f;
 
-			LastTargetAlphaWithCollisionOn = deltaAlpha + cam->Alpha;
-			LastTopAlphaSpeed = 0.15f;
-			LastAlphaSpeedStep = 0.015f;
+			if (cam->m_bCollisionChecksOn) {
+				const float targetHeight = Dimensions.z;
+				float targetAlpha = 0.0f;
+				bool foundRoofCenter = false, foundRoofSide1 = false, foundRoofSide2 = false;
+				bool foundCamRoof = false, foundCamGround = false;
+				float camRoof = 0.0f;
+				const float carBottom = TargetCoors.z - targetHeight / 2.0f;
+
+				const float carRoof = WorldClass::FindRoofZFor3DCoord(TargetCoors.x, TargetCoors.y, carBottom, &foundRoofCenter);
+
+				CVector fwd = car->GetForward();
+				fwd.Normalise();
+				const float carSideAngle = GetATanOfXY(fwd.x, fwd.y) + HALFPI;
+				const float sideX = 2.5f * cosf(carSideAngle);
+				const float sideY = 2.5f * sinf(carSideAngle);
+				WorldClass::FindRoofZFor3DCoord(TargetCoors.x + sideX, TargetCoors.y + sideY, carBottom, &foundRoofSide1);
+				WorldClass::FindRoofZFor3DCoord(TargetCoors.x - sideX, TargetCoors.y - sideY, carBottom, &foundRoofSide2);
+
+				const float camGround = WorldClass::FindGroundZFor3DCoord(cam->Source.x, cam->Source.y,
+					TargetCoors.z + length * sinf(cam->Alpha + AlphaOffset) + cam->m_fCloseInCarHeightOffset, &foundCamGround);
+				float camTargetZ = 0.0f;
+				if (foundCamGround) {
+					camRoof = WorldClass::FindRoofZFor3DCoord(cam->Source.x, cam->Source.y, camGround + targetHeight, &foundCamRoof);
+					camTargetZ = camGround + targetHeight * 1.5f + 0.1f;
+				} else {
+					foundCamRoof = false;
+					camTargetZ = TargetCoors.z;
+				}
+
+				if (foundRoofCenter && !foundCamRoof && (foundRoofSide1 || foundRoofSide2)) {
+					targetAlpha = GetATanOfXY(cam->CA_MAX_DISTANCE, carRoof - camTargetZ - 1.5f);
+					camClear = false;
+				}
+				if (foundCamRoof) {
+					const float roof = foundRoofCenter ? min(camRoof, carRoof) : camRoof;
+					targetAlpha = GetATanOfXY(cam->CA_MAX_DISTANCE, roof - camTargetZ - 1.5f);
+					camClear = false;
+				}
+
+				targetAlpha = LimitRadianAngle(targetAlpha);
+				if (targetAlpha < DEGTORAD(-7.0f))
+					targetAlpha = DEGTORAD(-7.0f);
+				if (targetAlpha > AlphaOffset)
+					camClear = true;
+
+				PreviousNearCheckNearClipSmall = false;
+				if (!camClear) {
+					PreviousNearCheckNearClipSmall = true;
+					RwCameraSetNearClipPlane(RwCamera, DefaultNearClip);
+					deltaAlpha = LimitRadianAngle(targetAlpha - (cam->Alpha + AlphaOffset));
+					topAlphaSpeed = 0.3f;
+					alphaSpeedStep = 0.03f;
+				}
+
+				const float camZ = TargetCoors.z + length * sinf(cam->Alpha + deltaAlpha + AlphaOffset) + cam->m_fCloseInCarHeightOffset;
+				bool foundGround, foundRoof;
+				const float camGround2 = WorldClass::FindGroundZFor3DCoord(cam->Source.x, cam->Source.y, camZ, &foundGround);
+				if (foundGround && camClear) {
+					if (camZ - camGround2 < 1.5f) {
+						PreviousNearCheckNearClipSmall = true;
+						RwCameraSetNearClipPlane(RwCamera, DefaultNearClip);
+						const float dz = camGround2 + 1.5f - TargetCoors.z;
+						float a = (length == 0.0f || dz == 0.0f) ? cam->Alpha : GetATanOfXY(length, dz);
+						deltaAlpha = LimitRadianAngle(a) - cam->Alpha;
+					}
+				} else if (camClear) {
+					float camRoof2 = WorldClass::FindRoofZFor3DCoord(cam->Source.x, cam->Source.y, camZ, &foundRoof);
+					if (foundRoof && camZ - camRoof2 < 1.5f) {
+						PreviousNearCheckNearClipSmall = true;
+						RwCameraSetNearClipPlane(RwCamera, DefaultNearClip);
+						if (camRoof2 > TargetCoors.z + 3.5f)
+							camRoof2 = TargetCoors.z + 3.5f;
+						const float dz = camRoof2 + 1.5f - TargetCoors.z;
+						float a = (length == 0.0f || dz == 0.0f) ? cam->Alpha : GetATanOfXY(length, dz);
+						deltaAlpha = LimitRadianAngle(a) - cam->Alpha;
+					}
+				}
+
+				LastTargetAlphaWithCollisionOn = deltaAlpha + cam->Alpha;
+				LastTopAlphaSpeed = topAlphaSpeed;
+				LastAlphaSpeedStep = alphaSpeedStep;
+			} else if (PreviousNearCheckNearClipSmall) {
+				RwCameraSetNearClipPlane(RwCamera, DefaultNearClip);
+			}
+
 			if (!mouseChangesBeta)
 				WellBufferMe(LastTargetAlphaWithCollisionOn, &cam->Alpha, &cam->AlphaSpeed, LastTopAlphaSpeed, LastAlphaSpeedStep, true);
 		}
 
-		float length = (cam->Source - TargetCoors).Magnitude2D();
 		cam->Source.z = TargetCoors.z + sinf(cam->Alpha + AlphaOffset) * length + cam->m_fCloseInCarHeightOffset;
 	}
 
@@ -1020,7 +1405,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	cam->Front.Normalise();
 
 	// ---- Roll / wobble and helicopter tilt ----
-	if (isHeli) {
+	if (vc && isHeli) {
 		float targetTilt = DotProduct(cam->Front, car->m_vecMoveSpeed);
 		CVector upTarget = car->GetUp();
 		upTarget.Normalise();
@@ -1163,8 +1548,17 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 
 	bool useAnchoring = (cameraAnchoring == 1) || (cameraAnchoring == 2 && (masterProfile == PROFILE_VANILLA || (distanceProfile == PROFILE_VANILLA && anglesProfile == PROFILE_VANILLA)));
 	if (useAnchoring) {
-		Process_Cam_On_A_String_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(
-			TheCamera, cam, car, CameraTarget, TargetOrientation);
+		if (cam->Mode == MODE_BEHINDBOAT) {
+			if (isVC())
+				Process_BehindBoat_VC<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(
+					TheCamera, cam, car, CameraTarget, TargetOrientation);
+			else
+				Process_BehindBoat_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass>(
+					TheCamera, cam, car, CameraTarget, TargetOrientation);
+		} else {
+			Process_Cam_On_A_String_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(
+				TheCamera, cam, car, CameraTarget, TargetOrientation);
+		}
 		return;
 	}
 

@@ -67,6 +67,7 @@ public:
 	int16 GetSteeringLeftRight(void);
 	int16 GetCarGunUpDown(void);
 	int16 GetCarGunLeftRight(void);
+	bool GetCarGunFired(void);
 	bool GetLookLeft(void);
 	bool GetLookRight(void);
 	bool GetLookBehindForCar(void);
