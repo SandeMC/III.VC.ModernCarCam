@@ -1022,33 +1022,66 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			TheCamera->m_bCamDirectlyBehind = true;
 	}
 
+	// ---- Mouse free-look (ported from the San Andreas camera) ----
+	// The mouse is read before the camera direction is finalised. While the player
+	// is free-looking, Beta and Alpha are kept as state (exactly like the SA
+	// camera) so the vehicle's motion does not drag the view; the game re-takes
+	// control once the 50-step hold runs out.
+	bool mouseChangesBeta = false;
+	float mouseXMovement = 0.0f;
+	float mouseYMovement = 0.0f;
+	if (mouseFreeLook && m_bUseMouse3rdPerson && !GetDisablePlayerControls(pad) && nextDirectionIsForward) {
+		float mouseY = CPad::NewMouseControllerState.y * 2.0f;
+		float mouseX = CPad::NewMouseControllerState.x * -2.0f;
+		if ((mouseX != 0.0f || mouseY != 0.0f) && m_bDisableMouseSteering) {
+			float v113 = cam->FOV * 0.0125f;
+			float sensitivity = (index == 0) ? 0.8f : ((index == 1) ? 0.75f : 1.0f);
+			mouseYMovement = mouseY * v113 * GetMouseAccel(TheCamera) * sensitivity;
+			mouseXMovement = mouseX * v113 * GetMouseAccel(TheCamera) * sensitivity;
+			cam->BetaSpeed = 0.0f;
+			cam->AlphaSpeed = 0.0f;
+			stepsLeftToChangeBetaByMouse = 50.0f;
+			mouseChangesBeta = true;
+		} else if (stepsLeftToChangeBetaByMouse > 0.0f) {
+			cam->BetaSpeed = 0.0f;
+			cam->AlphaSpeed = 0.0f;
+			stepsLeftToChangeBetaByMouse = max(0.0f, stepsLeftToChangeBetaByMouse - ms_fTimeStep);
+			mouseChangesBeta = true;
+		}
+	}
+
 	// ---- Basic string constraint (Cam_On_A_String_Unobscured) ----
-	if (cam->ResetStatics) {
-		CVector d0 = cam->Source - TargetCoors;
-		cam->Source = TargetCoors + d0 * (cam->CA_MAX_DISTANCE + 1.0f);
+	// The string only constrains the distance to the target. The direction comes
+	// from Beta, which is derived from the current position unless the player is
+	// free-looking.
+	// While free-looking the distance is pinned to the zoom target so looking
+	// around can never change the zoom; otherwise the distance is the vanilla
+	// world-anchored string.
+	float stringLength;
+	if (mouseChangesBeta) {
+		stringLength = cam->CA_MAX_DISTANCE;
+	} else {
+		stringLength = (cam->Source - TargetCoors).Magnitude2D();
+		if (cam->ResetStatics)
+			stringLength = cam->CA_MAX_DISTANCE + 1.0f;
+		if (stringLength < 0.001f)
+			stringLength = cam->CA_MAX_DISTANCE;
+		if (stringLength > cam->CA_MAX_DISTANCE)
+			stringLength = cam->CA_MAX_DISTANCE;
+		else if (stringLength < cam->CA_MIN_DISTANCE)
+			stringLength = cam->CA_MIN_DISTANCE;
 	}
 
-	CVector stringDist = cam->Source - TargetCoors;
-	float stringLength = stringDist.Magnitude2D();
-	if (stringLength < 0.001f) {
-		CVector fwd = car->GetForward();
-		fwd.z = 0.0f;
-		fwd.Normalise();
-		cam->Source = TargetCoors - fwd * cam->CA_MAX_DISTANCE;
-		stringDist = cam->Source - TargetCoors;
-		stringLength = stringDist.Magnitude2D();
-	}
-	if (stringLength > cam->CA_MAX_DISTANCE) {
-		cam->Source.x = TargetCoors.x + stringDist.x / stringLength * cam->CA_MAX_DISTANCE;
-		cam->Source.y = TargetCoors.y + stringDist.y / stringLength * cam->CA_MAX_DISTANCE;
-	} else if (stringLength < cam->CA_MIN_DISTANCE) {
-		cam->Source.x = TargetCoors.x + stringDist.x / stringLength * cam->CA_MIN_DISTANCE;
-		cam->Source.y = TargetCoors.y + stringDist.y / stringLength * cam->CA_MIN_DISTANCE;
-	}
+	if (!mouseChangesBeta)
+		cam->Beta = GetATanOfXY(TargetCoors.x - cam->Source.x, TargetCoors.y - cam->Source.y);
 
-	cam->Beta = GetATanOfXY(TargetCoors.x - cam->Source.x, TargetCoors.y - cam->Source.y);
-	cam->Alpha = LimitRadianAngle(cam->Alpha);
-	cam->Beta = LimitRadianAngle(cam->Beta);
+	// Alpha follows the opposite convention to the SA camera (here a positive
+	// Alpha raises the camera), so the mouse pitch is inverted to match SA.
+	cam->Beta = LimitRadianAngle(cam->Beta + mouseXMovement);
+	cam->Alpha = LimitRadianAngle(cam->Alpha - mouseYMovement);
+
+	cam->Source.x = TargetCoors.x - cosf(cam->Beta) * stringLength;
+	cam->Source.y = TargetCoors.y - sinf(cam->Beta) * stringLength;
 
 	// Vice City: when stationary and firing the Firetruck water cannon, the camera
 	// follows the turret so the player can aim. (Process_Cam_On_A_String)
@@ -1061,27 +1094,6 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	}
 
 	cam->m_fDistanceBeforeChanges = (cam->Source - TargetCoors).Magnitude2D();
-
-	// ---- Mouse free-look (ported from the San Andreas camera) ----
-	bool mouseChangesBeta = false;
-	if (mouseFreeLook && m_bUseMouse3rdPerson && !GetDisablePlayerControls(pad) && nextDirectionIsForward) {
-		float mouseY = CPad::NewMouseControllerState.y * 2.0f;
-		float mouseX = CPad::NewMouseControllerState.x * -2.0f;
-		if ((mouseX != 0.0f || mouseY != 0.0f) && m_bDisableMouseSteering) {
-			float v113 = cam->FOV * 0.0125f;
-			cam->Beta += mouseX * v113 * GetMouseAccel(TheCamera);
-			cam->Alpha += mouseY * v113 * GetMouseAccel(TheCamera);
-			cam->BetaSpeed = 0.0f;
-			cam->AlphaSpeed = 0.0f;
-			stepsLeftToChangeBetaByMouse = 50.0f;
-			mouseChangesBeta = true;
-		} else if (stepsLeftToChangeBetaByMouse > 0.0f) {
-			cam->BetaSpeed = 0.0f;
-			cam->AlphaSpeed = 0.0f;
-			stepsLeftToChangeBetaByMouse = max(0.0f, stepsLeftToChangeBetaByMouse - ms_fTimeStep);
-			mouseChangesBeta = true;
-		}
-	}
 
 	// ---- Alpha offset: the vertical angle for each zoom level ----
 	{
@@ -1303,6 +1315,28 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		cam->Source.z = TargetCoors.z + sinf(cam->Alpha + AlphaOffset) * length + cam->m_fCloseInCarHeightOffset;
 	}
 
+	// ---- Free-look placement ----
+	// Pitching down keeps a constant 3D distance (SA sphere) so the car never
+	// changes size and the view can reach overhead; pitching up keeps the
+	// vanilla horizontal string distance (cylinder) so the camera stays clear
+	// of the car. The elevation is clamped to the SA range, but it is stopped
+	// just short of a straight top-down view. The collision pass below still
+	// stops the camera on the ground when looking up.
+	if (mouseChangesBeta) {
+		const float (*angleTable)[15] = (anglesProfile == PROFILE_CUSTOM) ? CARCAM_SET_CUSTOM :
+			((anglesProfile == PROFILE_VANILLA) ? CARCAM_SET_VANILLA :
+			((anglesProfile == PROFILE_LCS) ? CARCAM_SET_LCS : CARCAM_SET_SA));
+		const float maxElevation = min(angleTable[index][14], DEGTORAD(80.0f));
+		const float elevation = clamp(cam->Alpha + AlphaOffset, -angleTable[index][13], maxElevation);
+		cam->Alpha = elevation - AlphaOffset;
+
+		const float distance = cam->CA_MAX_DISTANCE;
+		const float horizontal = (elevation >= 0.0f) ? cosf(elevation) * distance : distance;
+		cam->Source.x = TargetCoors.x - cosf(cam->Beta) * horizontal;
+		cam->Source.y = TargetCoors.y - sinf(cam->Beta) * horizontal;
+		cam->Source.z = TargetCoors.z + sinf(elevation) * distance;
+	}
+
 	// ---- Rotate the camera behind the car when driving forward ----
 	{
 		const float maxDiffBeta = DEGTORAD(160.0f);
@@ -1338,18 +1372,6 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	TheCamera->m_bCamDirectlyBehind = false;
 	TheCamera->m_bCamDirectlyInFront = false;
 
-	// Re-apply mouse free-look after the beta/height logic moved the camera.
-	if (mouseChangesBeta) {
-		cam->Alpha = clamp(cam->Alpha, -1.2f, 1.2f);
-		float d2 = (cam->Source - TargetCoors).Magnitude2D();
-		if (d2 < 0.1f)
-			d2 = cam->CA_MAX_DISTANCE;
-		cam->Source.x = TargetCoors.x - cosf(cam->Beta) * d2;
-		cam->Source.y = TargetCoors.y - sinf(cam->Beta) * d2;
-		float d3 = (cam->Source - TargetCoors).Magnitude2D();
-		cam->Source.z = TargetCoors.z + sinf(cam->Alpha + AlphaOffset) * d3 + cam->m_fCloseInCarHeightOffset;
-	}
-
 	// ---- Keep the camera out of geometry ----
 	{
 		pIgnoreEntity = (CEntity*)car;
@@ -1365,6 +1387,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		CColPoint colPoint;
 		CEntity* entity = nil;
 		float heightTarget = 0.0f;
+		pIgnoreEntity = (CEntity*)car;
 		if (WorldClass::ProcessLineOfSight(TargetCoors, cam->Source, colPoint, entity, false, true, false, false, false, false, false)) {
 			if (entity) {
 				CBaseModelInfo* mi = CModelInfo::GetModelInfo(entity->GetModelIndex());
@@ -1374,8 +1397,24 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			if (heightTarget < 0.0f)
 				heightTarget = 0.0f;
 		}
+		pIgnoreEntity = nil;
 		WellBufferMe(heightTarget, &HeightFixerCarsObscuring, &HeightFixerCarsObscuringSpeed, 0.2f, 0.025f, false);
 		cam->Source.z += HeightFixerCarsObscuring;
+	}
+
+	// ---- Keep a little clearance above the ground and pull the near plane in ----
+	// Without this, resting the camera on the ground lets the near clip plane
+	// cut into it. SA shrinks the near clip plane in the same situation.
+	if (mouseChangesBeta) {
+		bool foundGround = false;
+		const float groundZ = WorldClass::FindGroundZFor3DCoord(cam->Source.x, cam->Source.y, TargetCoors.z + 2.0f, &foundGround);
+		if (foundGround) {
+			if (cam->Source.z < groundZ + 0.25f)
+				cam->Source.z = groundZ + 0.25f;
+			const float clearance = cam->Source.z - groundZ;
+			if (clearance < DefaultNearClip)
+				RwCameraSetNearClipPlane(RwCamera, max(0.05f, clearance - 0.05f));
+		}
 	}
 
 	// ---- Keep the camera above the water ----
