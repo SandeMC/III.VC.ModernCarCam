@@ -1,23 +1,12 @@
-# Visual Studio build artifacts
-.vs/
-*.user
+# Build artifacts
 Release/
 Debug/
-ReleaseVC/
-DebugVC/
-ReleaseLCS/
-DebugLCS/
-SACarCam/Release/
-SACarCam/Debug/
-SACarCam/ReleaseVC/
-SACarCam/DebugVC/
-SACarCam/ReleaseLCS/
-SACarCam/DebugLCS/
+.vs/
+*.user
 
-# Reference material, not part of the mod
+# Reference material (not part of the mod)
 hez-gta-re3/
 WidescreenFixesPack-gtavc/
 SACarCamWithModernDriveBy/
-gta3.exe
-gta-vc.exe
+*.exe
 .kilo/

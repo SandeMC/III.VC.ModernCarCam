@@ -20,12 +20,15 @@
 // (MIT licensed, see licenses/WidescreenFixesPack.txt).
 // ---------------------------------------------------------------------------
 
-// Defined by project configuration (e.g. ReleaseLCS defines LCS_CAM).
-// If defined, it compiles as LCS vehicle camera (LCSCarCam); otherwise as SA vehicle camera (SACarCam).
+// Legacy single-game build switch. ModernCarCam detects the running game at
+// runtime and no longer needs a separate LCS/SA build.
 //#define LCS_CAM
 
 #define DefaultFOV 70.0f
 #define DefaultNearClip 0.9f
+
+// CarZoomIndicator value for the top-down view (CCamera::eCamZoom order).
+#define CAM_ZOOM_TOPDOWN 4
 
 HMODULE dllModule, hDummyHandle;
 int gtaversion = -1;
@@ -166,6 +169,8 @@ float ZmOneAlphaOffsetCustom[5]   = { -0.01f, 0.10f, 0.125f, -0.10f, -0.06f };
 float ZmTwoAlphaOffsetCustom[5]   = {  0.045f, 0.12f, 0.045f,  0.045f, -0.035f };
 float ZmThreeAlphaOffsetCustom[5] = {  0.005f, 0.005f, 0.15f,  0.005f,  0.12f };
 
+// Internal camera table selector. This mirrors the original mod's table sets
+// and is always derived from the user-facing CameraProfile.
 enum CameraProfileType : int8_t {
 	PROFILE_SA = 0,
 	PROFILE_LCS = 1,
@@ -173,7 +178,24 @@ enum CameraProfileType : int8_t {
 	PROFILE_CUSTOM = 3
 };
 
+// User-facing profiles. "Game-Matched" reproduces whatever game is running;
+// III/VC/SA/LCS/VCS/IV/V force a particular game's camera; "Enhanced" is the
+// game-matched camera plus quality-of-life additions.
+enum ModernProfile : int8_t {
+	PROFILE_GAME_MATCHED = 0,
+	PROFILE_III,
+	PROFILE_VC,
+	PROFILE_SA_CAM,
+	PROFILE_ENHANCED,
+	PROFILE_LCS_CAM,
+	PROFILE_VCS,
+	PROFILE_IV,
+	PROFILE_V,
+	PROFILE_CUSTOM_CAM
+};
+
 // Feature and debug menu toggles
+ModernProfile cameraProfile = PROFILE_GAME_MATCHED;
 CameraProfileType masterProfile = PROFILE_VANILLA;
 CameraProfileType distanceProfile = PROFILE_VANILLA;
 CameraProfileType fovProfile = PROFILE_VANILLA;
@@ -193,6 +215,81 @@ bool mouseFreeLook = true;
 bool heightIncreaseOnBike = true;
 bool fixTheBug = true;
 bool seeUnderwater = false;
+
+// Resolve the user-facing profile into the internal table selectors and the
+// default feature set. Only the free camera, free turret control and fixes are
+// added on top of the game-matched camera; everything else is opt-in.
+void applyProfile(ModernProfile profile, bool vc) {
+	switch (profile) {
+	case PROFILE_SA_CAM:
+	case PROFILE_IV:
+	case PROFILE_V:
+		masterProfile = PROFILE_SA;
+		break;
+	case PROFILE_LCS_CAM:
+	case PROFILE_VCS:
+		masterProfile = PROFILE_LCS;
+		break;
+	case PROFILE_CUSTOM_CAM:
+		masterProfile = PROFILE_CUSTOM;
+		break;
+	default:
+		masterProfile = PROFILE_VANILLA;
+		break;
+	}
+	distanceProfile = masterProfile;
+	fovProfile = masterProfile;
+	anglesProfile = masterProfile;
+
+	// Game-matched baseline: reproduce the running game and only add the free
+	// camera, free turret control and fixes.
+	cameraWobble = vc;             // VC has steering roll, III does not
+	elasticStringPhysics = false;
+	pitchTilt = 2;                  // match game
+	dynamicSpeedFOV = false;        // not native to III/VC
+	vcsCamShake = false;
+	cameraAnchoring = 2;            // match profile
+	cameraStiffness = -1.0f;
+	vehicleSpecificZoom = vc;
+	modernTurretControl = true;
+	modernDriveBy = true;
+	mouseFreeLook = true;
+	heightIncreaseOnBike = vc;
+	fixTheBug = true;
+	seeUnderwater = false;
+
+	switch (profile) {
+	case PROFILE_ENHANCED:
+	case PROFILE_CUSTOM_CAM:
+		// Game-matched camera plus quality-of-life additions.
+		elasticStringPhysics = true;
+		dynamicSpeedFOV = true;
+		pitchTilt = 3;
+		vcsCamShake = true;
+		break;
+	case PROFILE_VCS:
+		vcsCamShake = true;
+		cameraWobble = true;
+		vehicleSpecificZoom = true;
+		heightIncreaseOnBike = true;
+		cameraAnchoring = 0;
+		dynamicSpeedFOV = true;
+		break;
+	case PROFILE_SA_CAM:
+	case PROFILE_IV:
+	case PROFILE_V:
+	case PROFILE_LCS_CAM:
+		// The modern cameras are velocity-following and use the speed FOV.
+		cameraWobble = true;
+		vehicleSpecificZoom = true;
+		heightIncreaseOnBike = true;
+		cameraAnchoring = 0;
+		dynamicSpeedFOV = true;
+		break;
+	default:
+		break;
+	}
+}
 
 // Custom profile parameters (loaded from [CustomProfile] in ini)
 float customDistNear = 0.05f;
@@ -393,94 +490,46 @@ void LoadSettings()
 			strcpy(iniPath, ".\\ModernCarCam.ini");
 		} else if (GetFileAttributesA(".\\scripts\\ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
 			strcpy(iniPath, ".\\scripts\\ModernCarCam.ini");
-		} else if (GetFileAttributesA(".\\SACarCam.ini") != INVALID_FILE_ATTRIBUTES) {
-			strcpy(iniPath, ".\\SACarCam.ini");
-		} else if (GetFileAttributesA(".\\scripts\\SACarCam.ini") != INVALID_FILE_ATTRIBUTES) {
-			strcpy(iniPath, ".\\scripts\\SACarCam.ini");
 		}
 	}
 
 	char profile[32] = { 0 };
-	GetPrivateProfileStringA("General", "CameraProfile", "Vanilla", profile, sizeof(profile), iniPath);
-	if (_stricmp(profile, "LCS") == 0) {
-		masterProfile = PROFILE_LCS;
-	} else if (_stricmp(profile, "SA") == 0) {
-		masterProfile = PROFILE_SA;
+	GetPrivateProfileStringA("General", "Profile", "Game-Matched", profile, sizeof(profile), iniPath);
+	if (_stricmp(profile, "III") == 0) {
+		cameraProfile = PROFILE_III;
+	} else if (_stricmp(profile, "VC") == 0 || _stricmp(profile, "Vice City") == 0) {
+		cameraProfile = PROFILE_VC;
+	} else if (_stricmp(profile, "SA") == 0 || _stricmp(profile, "San Andreas") == 0) {
+		cameraProfile = PROFILE_SA_CAM;
+	} else if (_stricmp(profile, "Enhanced") == 0) {
+		cameraProfile = PROFILE_ENHANCED;
+	} else if (_stricmp(profile, "LCS") == 0) {
+		cameraProfile = PROFILE_LCS_CAM;
+	} else if (_stricmp(profile, "VCS") == 0) {
+		cameraProfile = PROFILE_VCS;
+	} else if (_stricmp(profile, "IV") == 0) {
+		cameraProfile = PROFILE_IV;
+	} else if (_stricmp(profile, "V") == 0 || _stricmp(profile, "GTAV") == 0) {
+		cameraProfile = PROFILE_V;
 	} else if (_stricmp(profile, "Custom") == 0) {
-		masterProfile = PROFILE_CUSTOM;
-	} else if (_stricmp(profile, "Vanilla") == 0 || _stricmp(profile, "Original") == 0 || _stricmp(profile, "VC") == 0 || _stricmp(profile, "III") == 0) {
-		masterProfile = PROFILE_VANILLA;
+		cameraProfile = PROFILE_CUSTOM_CAM;
 	} else {
-		char moduleName[MAX_PATH];
-		GetModuleFileNameA(dllModule, moduleName, MAX_PATH);
-		if (strstr(moduleName, "LCS") != nullptr || strstr(moduleName, "lcs") != nullptr) {
-			masterProfile = PROFILE_LCS;
-		} else if (strstr(moduleName, "SA") != nullptr || strstr(moduleName, "sa") != nullptr) {
-			masterProfile = PROFILE_SA;
-		} else {
-			masterProfile = PROFILE_VANILLA;
-		}
+		cameraProfile = PROFILE_GAME_MATCHED;
 	}
 
-	distanceProfile = masterProfile;
-	fovProfile = masterProfile;
-	anglesProfile = masterProfile;
+	applyProfile(cameraProfile, isVC());
 
-	auto ParseProfileString = [](const char* str, CameraProfileType defaultProfile) -> CameraProfileType {
-		if (!str || !*str) return defaultProfile;
-		if (_stricmp(str, "SA") == 0 || strcmp(str, "0") == 0)
-			return PROFILE_SA;
-		if (_stricmp(str, "LCS") == 0 || strcmp(str, "1") == 0)
-			return PROFILE_LCS;
-		if (_stricmp(str, "Custom") == 0 || strcmp(str, "3") == 0)
-			return PROFILE_CUSTOM;
-		if (_stricmp(str, "Vanilla") == 0 || _stricmp(str, "Original") == 0 || 
-		    _stricmp(str, "VC") == 0 || _stricmp(str, "III") == 0 || strcmp(str, "2") == 0)
-			return PROFILE_VANILLA;
-		return defaultProfile;
+	// The profile already chose the defaults. These ini keys are optional
+	// overrides: omit a key to keep the profile's value.
+	auto OverrideBool = [&](const char* key, bool& out) {
+		int val = GetPrivateProfileIntA("Features", key, -1, iniPath);
+		if (val != -1)
+			out = (val != 0);
 	};
-
-	char distBuf[32] = { 0 };
-	GetPrivateProfileStringA("General", "DistanceProfile", "", distBuf, sizeof(distBuf), iniPath);
-	if (!distBuf[0]) GetPrivateProfileStringA("General", "Distance", "", distBuf, sizeof(distBuf), iniPath);
-	if (!distBuf[0]) GetPrivateProfileStringA("Features", "DistanceProfile", "", distBuf, sizeof(distBuf), iniPath);
-	if (!distBuf[0]) GetPrivateProfileStringA("Features", "Distance", "", distBuf, sizeof(distBuf), iniPath);
-	distanceProfile = ParseProfileString(distBuf, masterProfile);
-
-	char fovBuf[32] = { 0 };
-	GetPrivateProfileStringA("General", "FOVProfile", "", fovBuf, sizeof(fovBuf), iniPath);
-	if (!fovBuf[0]) GetPrivateProfileStringA("General", "FOV", "", fovBuf, sizeof(fovBuf), iniPath);
-	if (!fovBuf[0]) GetPrivateProfileStringA("Features", "FOVProfile", "", fovBuf, sizeof(fovBuf), iniPath);
-	if (!fovBuf[0]) GetPrivateProfileStringA("Features", "FOV", "", fovBuf, sizeof(fovBuf), iniPath);
-	fovProfile = ParseProfileString(fovBuf, masterProfile);
-
-	char anglesBuf[32] = { 0 };
-	GetPrivateProfileStringA("General", "AnglesProfile", "", anglesBuf, sizeof(anglesBuf), iniPath);
-	if (!anglesBuf[0]) GetPrivateProfileStringA("General", "Angles", "", anglesBuf, sizeof(anglesBuf), iniPath);
-	if (!anglesBuf[0]) GetPrivateProfileStringA("Features", "AnglesProfile", "", anglesBuf, sizeof(anglesBuf), iniPath);
-	if (!anglesBuf[0]) GetPrivateProfileStringA("Features", "Angles", "", anglesBuf, sizeof(anglesBuf), iniPath);
-	anglesProfile = ParseProfileString(anglesBuf, masterProfile);
-
-	// Backward compatibility with legacy ini keys
-	int vanCam = GetPrivateProfileIntA("Features", "VanillaCamera", -1, iniPath);
-	if (vanCam == 1) {
-		distanceProfile = PROFILE_VANILLA;
-		fovProfile = PROFILE_VANILLA;
-		anglesProfile = PROFILE_VANILLA;
-	}
-	int vDist = GetPrivateProfileIntA("Features", "VanillaDistance", -1, iniPath);
-	if (vDist == 1) distanceProfile = PROFILE_VANILLA;
-	int vFOV = GetPrivateProfileIntA("Features", "VanillaFOV", -1, iniPath);
-	if (vFOV == 1) fovProfile = PROFILE_VANILLA;
-	int vAngles = GetPrivateProfileIntA("Features", "VanillaAngles", -1, iniPath);
-	if (vAngles == 1) anglesProfile = PROFILE_VANILLA;
-
-	auto ReadFeature = [&](const char* key, int defaultVal, bool vcFit, bool iiiFit) -> bool {
-		int val = GetPrivateProfileIntA("Features", key, defaultVal, iniPath);
-		if (val == 2) {
-			return isVC() ? vcFit : iiiFit;
-		}
-		return val != 0;
+	auto OverrideInt = [&](const char* key, int& out, int lo, int hi) {
+		int val = GetPrivateProfileIntA("Features", key, INT_MIN, iniPath);
+		if (val != INT_MIN)
+			out = min(max(val, lo), hi);
 	};
 
 	auto ReadFloat = [&](const char* sec, const char* key, float def) -> float {
@@ -490,21 +539,21 @@ void LoadSettings()
 	};
 
 	// Custom profile parameters
-	customDistNear = ReadFloat("CustomProfile", "CustomDistanceNear", 0.05f);
-	customDistMid  = ReadFloat("CustomProfile", "CustomDistanceMid", 1.9f);
-	customDistFar  = ReadFloat("CustomProfile", "CustomDistanceFar", 3.9f);
-	customDistOffset = ReadFloat("CustomProfile", "CustomDistanceOffset", 0.0f);
-	customMinDistance = ReadFloat("CustomProfile", "CustomMinDistance", 10.0f);
+	customDistNear = ReadFloat("Custom", "CustomDistanceNear", 0.05f);
+	customDistMid  = ReadFloat("Custom", "CustomDistanceMid", 1.9f);
+	customDistFar  = ReadFloat("Custom", "CustomDistanceFar", 3.9f);
+	customDistOffset = ReadFloat("Custom", "CustomDistanceOffset", 0.0f);
+	customMinDistance = ReadFloat("Custom", "CustomMinDistance", 10.0f);
 
-	customBaseFOV = ReadFloat("CustomProfile", "CustomBaseFOV", 70.0f);
-	customDynamicFOVMax = ReadFloat("CustomProfile", "CustomMaxDynamicFOV", 30.0f);
-	customDynamicFOVStartSpeed = ReadFloat("CustomProfile", "CustomDynamicFOVStartSpeed", 0.4f);
+	customBaseFOV = ReadFloat("Custom", "CustomBaseFOV", 70.0f);
+	customDynamicFOVMax = ReadFloat("Custom", "CustomMaxDynamicFOV", 30.0f);
+	customDynamicFOVStartSpeed = ReadFloat("Custom", "CustomDynamicFOVStartSpeed", 0.4f);
 
-	customAngleNear = ReadFloat("CustomProfile", "CustomAngleNear", -0.01f);
-	customAngleMid  = ReadFloat("CustomProfile", "CustomAngleMid", 0.045f);
-	customAngleFar  = ReadFloat("CustomProfile", "CustomAngleFar", 0.005f);
-	customMaxElevationAngle = ReadFloat("CustomProfile", "CustomMaxElevationAngle", 0.785398f);
-	customMinElevationAngle = ReadFloat("CustomProfile", "CustomMinElevationAngle", 1.5533431f);
+	customAngleNear = ReadFloat("Custom", "CustomAngleNear", -0.01f);
+	customAngleMid  = ReadFloat("Custom", "CustomAngleMid", 0.045f);
+	customAngleFar  = ReadFloat("Custom", "CustomAngleFar", 0.005f);
+	customMaxElevationAngle = ReadFloat("Custom", "CustomMaxElevationAngle", 0.785398f);
+	customMinElevationAngle = ReadFloat("Custom", "CustomMinElevationAngle", 1.5533431f);
 
 	for (int i = 0; i < 8; i++) {
 		CARCAM_SET_CUSTOM[i][1] = customDistOffset;
@@ -521,45 +570,39 @@ void LoadSettings()
 		ZmThreeAlphaOffsetCustom[i] = customAngleFar;
 	}
 
-	// Game-specific features default to "match game" (2) so that the shipped
-	// vanilla profile reproduces the original camera exactly: enabled in Vice
-	// City, disabled in GTA III where the original did not have them.
-	cameraWobble = ReadFeature("CameraWobble", 2, true, false);
-	elasticStringPhysics = ReadFeature("ElasticStringPhysics", 0, true, true);
-	pitchTilt = GetPrivateProfileIntA("Features", "PitchTilt", 2, iniPath);
-	dynamicSpeedFOV = ReadFeature("DynamicSpeedFOV", 0, false, false);
-	vcsCamShake = ReadFeature("VCSCamShake", 0, false, false);
-	cameraAnchoring = GetPrivateProfileIntA("Features", "CameraAnchoring", 2, iniPath);
-	cameraStiffness = ReadFloat("Features", "CameraStiffness", -1.0f);
-	vehicleSpecificZoom = ReadFeature("VehicleSpecificZoom", 2, true, false);
-	modernTurretControl = ReadFeature("ModernTurretControl", 1, true, true);
-	modernDriveBy = ReadFeature("ModernDriveBy", 1, true, true);
-	mouseFreeLook = ReadFeature("MouseFreeLook", 1, true, true);
-	fixTheBug = ReadFeature("FixCameraClip", 1, true, true);
+	// Optional feature overrides on top of the profile.
+	OverrideBool("CameraWobble", cameraWobble);
+	OverrideBool("ElasticStringPhysics", elasticStringPhysics);
+	OverrideInt("PitchTilt", pitchTilt, 0, 3);
+	OverrideBool("DynamicSpeedFOV", dynamicSpeedFOV);
+	OverrideBool("VCSCamShake", vcsCamShake);
+	OverrideInt("CameraAnchoring", cameraAnchoring, 0, 2);
+	cameraStiffness = ReadFloat("Features", "CameraStiffness", cameraStiffness);
+	OverrideBool("VehicleSpecificZoom", vehicleSpecificZoom);
+	OverrideBool("ModernTurretControl", modernTurretControl);
+	OverrideBool("ModernDriveBy", modernDriveBy);
+	OverrideBool("MouseFreeLook", mouseFreeLook);
+	OverrideBool("FixCameraClip", fixTheBug);
+	OverrideBool("BikesHeightIncrease", heightIncreaseOnBike);
 
-	int keepWater = GetPrivateProfileIntA("Features", "KeepCameraOverWater", 1, iniPath);
-	seeUnderwater = (keepWater == 0);
-
-	heightIncreaseOnBike = ReadFeature("BikesHeightIncrease", 2, true, false);
+	// Inverted relative to the internal "see underwater" flag.
+	int keepWater = GetPrivateProfileIntA("Features", "KeepCameraOverWater", -1, iniPath);
+	if (keepWater != -1)
+		seeUnderwater = (keepWater == 0);
 }
 
 void onMasterProfileChange(void) {
-	distanceProfile = masterProfile;
-	fovProfile = masterProfile;
-	anglesProfile = masterProfile;
+	applyProfile(cameraProfile, isVC());
 }
 
-const char *profileNames[] = { "SA", "LCS", "Vanilla", "Custom" };
+const char *profileNames[] = { "Game-Matched", "III", "VC", "SA", "Enhanced", "LCS", "VCS", "IV", "V", "Custom" };
 const char *anchoringNames[] = { "Disabled (SA float)", "Enabled (Rigid anchor)", "Match profile" };
 const char *pitchTiltNames[] = { "Disabled (Flat/III)", "Authentic VC (Downhill)", "Match game (Auto)", "Full symmetric" };
 
 void registerDebugMenu() {
 	if (!debugMenuLoaded) {
 		if (DebugMenuLoad()) {
-			DebugMenuAddInt8("ModernCarCam", "Master camera profile", (int8_t*)&masterProfile, onMasterProfileChange, 1, 0, 3, profileNames);
-			DebugMenuAddInt8("ModernCarCam", "Distance profile", (int8_t*)&distanceProfile, nil, 1, 0, 3, profileNames);
-			DebugMenuAddInt8("ModernCarCam", "FOV profile", (int8_t*)&fovProfile, nil, 1, 0, 3, profileNames);
-			DebugMenuAddInt8("ModernCarCam", "Angles profile", (int8_t*)&anglesProfile, nil, 1, 0, 3, profileNames);
+			DebugMenuAddInt8("ModernCarCam", "Camera profile", (int8_t*)&cameraProfile, onMasterProfileChange, 1, 0, 9, profileNames);
 
 			DebugMenuAddVarBool8("ModernCarCam", "Camera wobble", (int8*)&cameraWobble, nil);
 			DebugMenuAddVarBool8("ModernCarCam", "Elastic string physics", (int8*)&elasticStringPhysics, nil);
@@ -596,6 +639,64 @@ inline float LimitRadianAngle(float angle) {
 
 static bool IsVehicleSuspensionHigh(CCameraVC* camera) { return camera->m_bVehicleSuspenHigh; }
 static bool IsVehicleSuspensionHigh(CCameraIII*) { return false; }
+
+// ---------------------------------------------------------------------------
+// GTA III "top down" / classic vehicle camera (CCam::Process_TopDown).
+// GTA III offers this as part of its normal view cycle; Vice City does not, so
+// reproducing it here lets the mode work and be cycled to in both games.
+// ---------------------------------------------------------------------------
+template<class CamClass, class CameraClass, class VehicleClass, class WorldClass>
+void
+Process_TopDown_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, const CVector& CameraTarget, float TargetOrientation)
+{
+	static float AdjustHeightTargetMoveBuffer = 0.0f;
+	static float AdjustHeightTargetMoveSpeed = 0.0f;
+
+	cam->FOV = DefaultFOV;
+	if (!car->IsVehicle())
+		return;
+
+	CVector Target, TestSource, TestTarget;
+	CColPoint colPoint;
+	CEntity* entity = nil;
+	float HeightTarget = 0.0f;
+
+	if (cam->ResetStatics) {
+		AdjustHeightTargetMoveBuffer = 0.0f;
+		AdjustHeightTargetMoveSpeed = 0.0f;
+	}
+
+	const float f = powf(0.8f, 4.0f);
+	Target = f * CameraTarget + (1.0f - f) * CameraTarget;
+	cam->Source = Target + CVector(0.0f, 0.0f, 30.0f * 0.8f);
+
+	TestSource = cam->Source;
+	TestTarget = TestSource;
+	TestTarget.z = Target.z;
+	if (WorldClass::ProcessLineOfSight(TestTarget, TestSource, colPoint, entity, true, false, false, false, false, false, false)) {
+		if (cam->Source.z < colPoint.point.z + 3.0f)
+			HeightTarget = colPoint.point.z + 3.0f - cam->Source.z;
+	} else {
+		TestSource = cam->Source;
+		TestTarget = TestSource;
+		TestTarget.z += 10.0f;
+		if (WorldClass::ProcessLineOfSight(TestTarget, TestSource, colPoint, entity, true, false, false, false, false, false, false))
+			if (cam->Source.z < colPoint.point.z + 3.0f)
+				HeightTarget = colPoint.point.z + 3.0f - cam->Source.z;
+	}
+	WellBufferMe(HeightTarget, &AdjustHeightTargetMoveBuffer, &AdjustHeightTargetMoveSpeed, 0.2f, 0.02f, false);
+	cam->Source.z += AdjustHeightTargetMoveBuffer;
+
+	RwCameraSetNearClipPlane(RwCamera, 1.5f);
+
+	cam->Front = CVector(-0.01f, -0.01f, -1.0f);
+	cam->Front.Normalise();
+	const float Dist = (cam->Source - CameraTarget).Magnitude();
+	cam->m_cvecTargetCoorsForFudgeInter = Dist * cam->Front + cam->Source;
+	cam->Up = CVector(0.0f, 1.0f, 0.0f);
+
+	cam->ResetStatics = false;
+}
 
 // ---------------------------------------------------------------------------
 // Vanilla "behind boat" camera (CCam::Process_BehindBoat).
@@ -889,13 +990,17 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		!(pad->GetLookBehindForCar() || pad->GetLookBehindForPed() || pad->GetLookLeft() || pad->GetLookRight()) &&
 		cam->DirectionWasLooking == LOOKING_FORWARD;
 
-	// ---- Field of view (vanilla base value plus optional dynamic expansion) ----
+	// ---- Field of view ----
+	// The dynamic speed FOV is a faithful port of ThirteenAG's WidescreenFixesPack
+	// "CarSpeedDependantFOV" (Misc.ixx): expand the FOV with forward speed, decay
+	// it back at 0.98^dt and cap it 30 degrees over the base. MIT licensed, see
+	// licenses/WidescreenFixesPack.txt.
 	const float baseFOV = (fovProfile == PROFILE_CUSTOM) ? customBaseFOV : DefaultFOV;
 	const float maxFOVAdd = (fovProfile == PROFILE_CUSTOM) ? customDynamicFOVMax : 30.0f;
 	const float fovStartSpeed = (fovProfile == PROFILE_CUSTOM) ? customDynamicFOVStartSpeed : 0.4f;
 	if (cam->ResetStatics) {
 		cam->FOV = baseFOV;
-	} else if (dynamicSpeedFOV && (isCar || isBike)) {
+	} else if (dynamicSpeedFOV) {
 		float forwardSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
 		if (forwardSpeed > fovStartSpeed)
 			cam->FOV += (forwardSpeed - fovStartSpeed) * ms_fTimeStep;
@@ -1584,6 +1689,19 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 	}
 
 	VehicleClass* car = (VehicleClass*)cam->CamTargetEntity;
+
+	// GTA III's top-down / classic view is available in every profile, so the
+	// game's own view cycle keeps its top-down option. In Vice City the mode is
+	// redirected to the car camera (see DllMain); the top-down zoom sets
+	// CarZoomValue to 1.0, which is what identifies it here.
+	bool isTopDown = (cam->Mode == MODE_TOPDOWN1 || cam->Mode == MODE_TOPDOWN2);
+	if (!isTopDown && isVC() && !isReLCS)
+		isTopDown = (TheCamera->CarZoomValue == 1.0f) || ((int)TheCamera->CarZoomIndicator == CAM_ZOOM_TOPDOWN);
+	if (isTopDown) {
+		Process_TopDown_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass>(
+			TheCamera, cam, car, CameraTarget, TargetOrientation);
+		return;
+	}
 
 	bool useAnchoring = (cameraAnchoring == 1) || (cameraAnchoring == 2 && (masterProfile == PROFILE_VANILLA || (distanceProfile == PROFILE_VANILLA && anglesProfile == PROFILE_VANILLA)));
 	if (useAnchoring) {
@@ -2816,6 +2934,16 @@ DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 
 			// Prevent game from overwriting cam->FOV to 70.0f every frame (allows dynamic FOV and custom base FOV)
 			Nop(0x47fb22, 10);
+
+			// Vice City's camera cycle offers a top-down view, but CCam::Process
+			// does nothing for it (the original Process_TopDown call was stripped).
+			// Redirect the mode to the car camera; the camera dispatch then runs
+			// the ported top-down camera instead.
+			if (!isReLCS &&
+				*(uint16*)0x470D23 == 0xC766 && *(uint8*)0x470D25 == 0x05 &&
+				*(uint32*)0x470D26 == 0x0070388A && *(uint16*)0x470D2A == 0x0001) {
+				Patch(0x470D2A, (uint16)18); // MODE_TOPDOWN -> MODE_CAM_ON_A_STRING
+			}
 			
 			if (modernDriveBy) {
 				InjectHook(0x5C9885, 0x5C9893, PATCH_JUMP);

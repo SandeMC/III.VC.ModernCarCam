@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="SACarCam.cpp">
+    <ClCompile Include="ModernCarCam.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Pad.cpp">
