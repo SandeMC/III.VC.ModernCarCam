@@ -221,18 +221,26 @@ struct CColTrianglePlane
 	uint8 dir;
 };
 
+// Layout matches San Andreas' CColPoint (m_vecPoint 0x0, m_vecNormal 0x10,
+// surface types at 0x20, m_fDepth 0x28). The III/VC layout is smaller and has
+// the same point/normal offsets, so this larger definition is safe for them and
+// avoids a 4-byte stack overflow when the SA engine writes a CColPoint.
 struct CColPoint
 {
-	CVector point;
-	int pad1;
+	CVector point;    // 0x00
+	float field_C;    // 0x0C
 	// the surface normal on the surface of point
-	CVector normal;
-	int pad2;
-	uint8 surfaceA;
-	uint8 pieceA;
-	uint8 surfaceB;
-	uint8 pieceB;
-	float depth;
+	CVector normal;   // 0x10
+	float field_1C;   // 0x1C
+	uint8 surfaceA;   // 0x20
+	uint8 pieceA;     // 0x21
+	uint8 lightingA;  // 0x22
+	uint8 _padA;      // 0x23
+	uint8 surfaceB;   // 0x24
+	uint8 pieceB;     // 0x25
+	uint8 lightingB;  // 0x26
+	uint8 _padB;      // 0x27
+	float depth;      // 0x28
 };
 
 class CColModelVC {
@@ -302,6 +310,10 @@ class CModelInfo
 public:
 	static CBaseModelInfo* GetModelInfo(int id) {
 		return ms_modelInfoPtrs[id];
+	}
+	// Raw address of a model info entry (used by the San Andreas layouts).
+	static addr GetModelInfoPtr(int id) {
+		return (addr)ms_modelInfoPtrs[id];
 	}
 };
 
@@ -484,6 +496,8 @@ public:
 	bool IsObject(void) { return m_type == ENTITY_TYPE_OBJECT; }
 	bool IsDummy(void) { return m_type == ENTITY_TYPE_DUMMY; }
 
+	uint32 GetStatus(void) { return m_status; }
+
 	int GetModelIndex(void) { return m_modelIndex; }
 };
 static_assert(sizeof(CEntity) == 0x64, "CEntity: error");
@@ -652,6 +666,11 @@ public:
 	bool IsBoat(void) { return m_vehType == VEHICLE_TYPE_BOAT; }
 	bool IsBike(void) { return m_vehType == VEHICLE_TYPE_BIKE; }
 
+	// Defined in ModernCarCam.h once the handling-flag helper is available.
+	bool IsPlaneType(void);
+	bool IsHeliType(void);
+	bool IsBikeType(void);
+
 	CBaseModelInfo* GetModelInfo() { return CModelInfo::GetModelInfo(GetModelIndex()); }
 };
 static_assert(sizeof(CVehicleIII) == 0x288, "CVehicleIII: error");
@@ -756,6 +775,11 @@ struct CVehicleVC : CPhysicalVC
 	bool IsBoat(void) { return m_vehType == VEHICLE_TYPE_BOAT; }
 	bool IsBike(void) { return m_vehType == VEHICLE_TYPE_BIKE; }
 
+	// Defined in ModernCarCam.h once the handling-flag helper is available.
+	bool IsPlaneType(void);
+	bool IsHeliType(void);
+	bool IsBikeType(void);
+
 	CBaseModelInfo* GetModelInfo() { return CModelInfo::GetModelInfo(GetModelIndex()); }
 };
 
@@ -809,3 +833,137 @@ public:
 	void PlayOneShot(int32 audioEntity, uint16 oneShot, float volume);
 };
 extern cDMAudio &DMAudio;
+
+// ---------------------------------------------------------------------------
+// San Andreas layouts.
+//
+// GTA San Andreas stores placement, entity and vehicle fields at different
+// offsets from GTA III / Vice City, so the SA engine needs its own wrappers.
+// All offsets/types below are taken from the plugin-sdk San Andreas headers
+// (https://github.com/DK22Pac/plugin-sdk) and gta-reversed
+// (https://github.com/gta-reversed/gta-reversed); see licenses/ for credits.
+// ---------------------------------------------------------------------------
+
+// SA CPlaceable: vtable, CSimpleTransform m_placement (0x4) and a CMatrixLink*
+// m_matrix (0x14). The entity's matrix lives behind that pointer.
+class CPlaceableSA
+{
+public:
+	virtual ~CPlaceableSA() { }
+	uint8 m_placement[0x10]; // 0x04 (CSimpleTransform)
+	void* m_matrix;          // 0x14 (CMatrixLink*)
+
+	CMatrix& GetMatrix(void) { return *(CMatrix*)m_matrix; }
+	CVector& GetPosition(void) { return ((CMatrix*)m_matrix)->GetPosition(); }
+	CVector& GetRight(void) { return ((CMatrix*)m_matrix)->GetRight(); }
+	CVector& GetForward(void) { return ((CMatrix*)m_matrix)->GetForward(); }
+	CVector& GetUp(void) { return ((CMatrix*)m_matrix)->GetUp(); }
+};
+static_assert(sizeof(CPlaceableSA) == 0x18, "CPlaceableSA: wrong size");
+
+class CEntitySA : public CPlaceableSA
+{
+public:
+	void* m_pRwObject;                 // 0x18
+	uint32 m_nFlags;                   // 0x1C (bool bitfields)
+	uint16 m_nRandomSeed;              // 0x20
+	int16 m_modelIndex;                // 0x22
+	void* m_pReferences;               // 0x24
+	void* m_pStreamingLink;            // 0x28
+	uint16 m_nScanCode;                // 0x2C
+	uint8 m_nIplIndex;                 // 0x2E
+	uint8 m_nAreaCode;                 // 0x2F
+	int32 m_nLodIndex;                 // 0x30
+	uint8 m_nNumLodChildren;           // 0x34
+	uint8 m_nNumLodChildrenRendered;   // 0x35
+	uint8 m_info;                      // 0x36 (eEntityType:3 | eEntityStatus:5)
+	uint8 _pad37;                      // 0x37
+
+	void* GetColModel(void) { return *(void**)(CModelInfo::GetModelInfoPtr(m_modelIndex) + 0x14); }
+
+	uint32 GetType(void) { return m_info & 7; }
+	uint32 GetStatus(void) { return (m_info >> 3) & 0x1F; }
+
+	bool IsVehicle(void) { return GetType() == ENTITY_TYPE_VEHICLE; }
+	bool IsPed(void) { return GetType() == ENTITY_TYPE_PED; }
+	bool IsObject(void) { return GetType() == ENTITY_TYPE_OBJECT; }
+	bool IsBuilding(void) { return GetType() == ENTITY_TYPE_BUILDING; }
+	bool IsDummy(void) { return GetType() == ENTITY_TYPE_DUMMY; }
+	int GetModelIndex(void) { return m_modelIndex; }
+};
+static_assert(sizeof(CEntitySA) == 0x38, "CEntitySA: wrong size");
+
+class CPhysicalSA : public CEntitySA
+{
+public:
+	uint32 field_38;                   // 0x38
+	uint32 m_nLastCollisionTime;       // 0x3C
+	uint32 m_nPhysicalFlags;           // 0x40
+	CVector m_vecMoveSpeed;            // 0x44
+	CVector m_vecTurnSpeed;            // 0x50
+	uint8 _pad5C[0x138 - 0x5C];        // 0x5C
+};
+static_assert(sizeof(CPhysicalSA) == 0x138, "CPhysicalSA: wrong size");
+
+class CVehicleSA : public CPhysicalSA
+{
+public:
+	uint8 _pad138[0x384 - 0x138];      // 0x138 (CAEVehicleAudioEntity etc.)
+	void* pHandling;                   // 0x384 (tHandlingData*)
+	void* m_pFlyingHandlingData;       // 0x388
+	uint32 m_nHandlingFlags;           // 0x38C
+	uint8 _pad390[0x460 - 0x390];      // 0x390
+	CPed* pDriver;                     // 0x460
+	CPed* pPassengers[8];              // 0x464
+	uint8 _pad484[0x590 - 0x484];      // 0x484
+	int32 m_nVehicleType;              // 0x590 (eVehicleType)
+	int32 m_nVehicleSubClass;          // 0x594
+	uint8 _pad598[0x5A0 - 0x598];      // 0x598
+	int32 m_audioEntityId;             // 0x5A0: placeholder only (III/VC turret path is not used on SA)
+
+	// eVehicleType: 0 automobile, 1 mtrunk, 2 quad, 3 heli, 4 plane, 5 boat,
+	// 6 train, 7 fheli, 8 fplane, 9 bike, 10 bmx, 11 trailer.
+	bool IsCar(void) { return m_nVehicleType == 0 || m_nVehicleType == 1 || m_nVehicleType == 2; }
+	bool IsBoat(void) { return m_nVehicleType == 5; }
+	bool IsBike(void) { return m_nVehicleType == 9 || m_nVehicleType == 10; }
+
+	bool IsPlaneType(void) { return m_nVehicleType == 4 || m_nVehicleType == 8; }
+	bool IsHeliType(void) { return m_nVehicleType == 3 || m_nVehicleType == 7; }
+	bool IsBikeType(void) { return IsBike(); }
+};
+static_assert(sizeof(CVehicleSA) == 0x5A4, "CVehicleSA: wrong size");
+
+struct CColSphereSA
+{
+	CVector center;
+	float radius;
+};
+
+struct CColBoxSA
+{
+	CVector min;
+	CVector max;
+};
+
+// SA CColModel: m_boundBox at 0x0, m_boundSphere at 0x18, size 0x30.
+class CColModelSA
+{
+public:
+	CColBoxSA boundingBox;      // 0x00
+	CColSphereSA boundingSphere; // 0x18
+	uint8 _pad28[0x30 - 0x28];   // 0x28
+};
+static_assert(sizeof(CColModelSA) == 0x30, "CColModelSA: wrong size");
+
+// SA CWorld. Addresses are verified against gta-sa.exe; see ModernCarCam.cpp.
+class CWorldSA
+{
+public:
+	static bool ProcessLineOfSight(const CVector& point1, const CVector& point2, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreCamera, bool shootThrough = true);
+	static CEntity* TestSphereAgainstWorld(CVector centre, float distance, CEntity* entityToIgnore, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreCamera);
+	// SA's FindGroundZFor3DCoord has an extra CEntity** out-parameter.
+	static float FindGroundZFor3DCoord(float x, float y, float z, bool* found, CEntity** outEntity = nil);
+	static float FindRoofZFor3DCoord(float x, float y, float z, bool* found);
+	static bool ProcessVerticalLine(const CVector& origin, float distance, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, CStoredCollPoly* outCollPoly);
+	static bool GetIsLineOfSightClear(const CVector& origin, const CVector& target, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreSomeObjects);
+};

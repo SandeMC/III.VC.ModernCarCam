@@ -1,12 +1,15 @@
-# III.VC.ModernCarCam
+# III.VC.SA.ModernCarCam
 
-A universal vehicle camera ASI for GTA III and GTA Vice City. With the shipped
-settings the camera reproduces the original game; every additional behaviour is
-an ini option or a profile layered on top.
+A universal vehicle camera ASI for GTA III, GTA Vice City and GTA San Andreas.
+With the shipped settings the camera reproduces the original game; every
+additional behaviour is an ini option or a profile layered on top.
 
 The authentic camera is based on the reversed sources of re3 (GTA III) and reVC
 (Vice City). GTA III and Vice City implement the vehicle camera differently, so
 the mod keeps both algorithms and picks the right one for the running game.
+San Andreas already ships the follow camera this mod is built around, so on SA
+the mod hooks `CCam::Process_FollowCar_SA` directly and keeps the SA camera's own
+distance, FOV, angles, anchor and stiffness.
 
 ## Profiles
 
@@ -25,15 +28,15 @@ The camera is selected with a single `Profile` setting:
 
 IV is an approximation of that game's feel applied on top of the modern camera; its exact distances and angles can be dialled in with the Custom profile.
 
-Game, III, VC and SA profiles add only the free camera, free turret control and fixes on top of the original camera. Everything else (wobble, elastic string, dynamic FOV, shake, etc.) is off in those profiles and available as an override in `[Features]` or through the Enhanced / modern profiles.
+Game, III, VC and SA profiles add only the free camera and fixes on top of the original camera. Everything else (wobble, elastic string, dynamic FOV, shake, etc.) is off in those profiles and available as an override in `[Features]` or through the Enhanced / modern profiles.
 
-Enhanced is based on the Vice City camera: it uses Vice City's feature set (steering roll, per-vehicle zoom, bike-with-passenger height), Vice City's per-zoom camera angles, and Vice City's camera anchor and stiffness, even when running GTA III. It also enables the elastic string, dynamic speed FOV, full terrain pitch tilt, VCS shake and the reverse look-behind camera.
+Enhanced is based on the Vice City camera: it uses Vice City's feature set (steering roll, per-vehicle zoom, bike-with-passenger height), Vice City's per-zoom camera angles, and Vice City's camera anchor and stiffness, even when running GTA III. It also enables the elastic string, dynamic speed FOV, full terrain pitch tilt, VCS shake and the reverse look-behind camera. When running GTA San Andreas, Enhanced enables those same features but the SA camera keeps its own distance, FOV, angles, anchor and stiffness, and leaves the Vice City steering wobble and VCS shake off by default (they can still be turned on in `[Features]`). The III/VC-only turret and drive-by hooks are not installed on SA.
 
 ## Features
 
 - One profile for the whole camera, with optional per-feature overrides
 - Faithful GTA III and Vice City vehicle cameras recreations, can add any feature on-top of them
-- Free mouse look from San Andreas as an option
+- Free mouse look from San Andreas as an option, with a smoothed gamepad right stick (works in III, VC and SA)
 - Free turret control from San Andreas as an option (Rhino / Firetruck)
 - 360-degree drive-by aiming
 - Dynamic speed FOV (ported from ThirteenAG's Widescreen Fix)
@@ -52,12 +55,14 @@ Enhanced is based on the Vice City camera: it uses Vice City's feature set (stee
 ## Building
 
 Open `ModernCarCam.sln` and build `Release` (Win32). The output is
-`ModernCarCam.asi`.
+`Release\III.VC.SA.ModernCarCam.asi`, next to the shipped
+`III.VC.SA.ModernCarCam.ini`.
 
 ## Credits & licenses
 
 - Original SACarCam by erorcun and the SACarCamWithModernDriveBy fork by ICantReadYourMind.
 - Authentic camera algorithms based on the reversed GTA III / Vice City sources of re3 / reVC, using the [Hezkore/hez-gta-re3](https://github.com/Hezkore/hez-gta-re3) fork. re3 is not released under a standard license; its terms (educational / documentation / modding use, non-commercial, keep derivative work open source, give proper credit) are reproduced in `licenses/re3.txt`.
 - VCS camera shake and dynamic speed FOV ported from [ThirteenAG's WidescreenFixesPack](https://github.com/ThirteenAG/WidescreenFixesPack), MIT licensed. See `licenses/WidescreenFixesPack.txt`.
+- San Andreas addresses and layouts grounded in [gta-reversed](https://github.com/gta-reversed/gta-reversed) and [DK22Pac/plugin-sdk](https://github.com/DK22Pac/plugin-sdk).
 - This project is MIT licensed; see `LICENSE`. The third-party notices in `licenses/` apply to the portions they describe.
 - This project has been developed primarily by AI agents, but it has been thoroughly tested throughout the way.

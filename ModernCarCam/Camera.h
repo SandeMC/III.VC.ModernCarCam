@@ -721,3 +721,154 @@ struct CCameraIII : public CPlaceable
 };
 static_assert(sizeof(CCameraIII) == 0xE9D8, "CCameraIII: wrong size");
 extern CCameraIII *TheCameraIII;
+
+// ---------------------------------------------------------------------------
+// San Andreas CCam / CCamera.
+//
+// Field order and offsets follow the plugin-sdk San Andreas CCam header; the
+// field names used by the mod's shared engine are kept identical to the III/VC
+// wrappers. static_assert guards the total size (0x238).
+// ---------------------------------------------------------------------------
+class CCamSA
+{
+public:
+	bool    bBelowMinDist;                       // 0x00
+	bool    bBehindPlayerDesired;                // 0x01
+	bool    m_bCamLookingAtVector;               // 0x02
+	bool    m_bCollisionChecksOn;                // 0x03
+	bool    m_bFixingBeta;                       // 0x04
+	bool    m_bTheHeightFixerVehicleIsATrain;    // 0x05
+	bool    LookBehindCamWasInFront;             // 0x06
+	bool    LookingBehind;                       // 0x07
+	bool    LookingLeft;                         // 0x08
+	bool    LookingRight;                        // 0x09
+	bool    ResetStatics;                        // 0x0A
+	bool    Rotating;                            // 0x0B
+	int16   Mode;                                // 0x0C (eCamMode)
+	uint8   _padMode[2];                         // 0x0E
+	uint32  m_uiFinishTime;                      // 0x10
+	uint32  m_iDoCollisionChecksOnFrameNum;      // 0x14
+	uint32  m_iDoCollisionCheckEveryNumOfFrames; // 0x18
+	uint32  m_iFrameNumWereAt;                   // 0x1C
+	uint32  m_iRunningVectorArrayPos;            // 0x20
+	uint32  m_iRunningVectorCounter;             // 0x24
+	uint32  DirectionWasLooking;                 // 0x28
+	float   f_max_role_angle;                    // 0x2C
+	float   f_Roll;                              // 0x30
+	float   f_rollSpeed;                         // 0x34
+	float   m_fSyphonModeTargetZOffSet;          // 0x38
+	float   m_fAmountFractionObscured;           // 0x3C
+	float   m_fAlphaSpeedOverOneFrame;           // 0x40
+	float   m_fBetaSpeedOverOneFrame;            // 0x44
+	float   m_fBufferedTargetBeta;               // 0x48
+	float   m_fBufferedTargetOrientation;        // 0x4C
+	float   m_fBufferedTargetOrientationSpeed;   // 0x50
+	float   m_fCamBufferedHeight;                // 0x54
+	float   m_fCamBufferedHeightSpeed;           // 0x58
+	float   m_fCloseInPedHeightOffset;           // 0x5C
+	float   m_fCloseInPedHeightOffsetSpeed;      // 0x60
+	float   m_fCloseInCarHeightOffset;           // 0x64
+	float   m_fCloseInCarHeightOffsetSpeed;      // 0x68
+	float   m_fDimensionOfHighestNearCar;        // 0x6C
+	float   m_fDistanceBeforeChanges;            // 0x70
+	float   m_fFovSpeedOverOneFrame;             // 0x74
+	float   m_fMinDistAwayFromCamWhenInterPolating; // 0x78
+	float   m_fPedBetweenCameraHeightOffset;     // 0x7C
+	float   m_fPlayerInFrontSyphonAngleOffSet;   // 0x80
+	float   m_fRadiusForDead;                    // 0x84
+	float   m_fRealGroundDist;                   // 0x88
+	float   m_fTargetBeta;                       // 0x8C
+	float   m_fTimeElapsedFloat;                 // 0x90
+	float   m_fTilt;                             // 0x94
+	float   m_fTiltSpeed;                        // 0x98
+	float   m_fTransitionBeta;                   // 0x9C
+	float   m_fTrueBeta;                         // 0xA0
+	float   m_fTrueAlpha;                        // 0xA4
+	float   m_fInitialPlayerOrientation;         // 0xA8
+	float   Alpha;                               // 0xAC (m_fVerticalAngle)
+	float   AlphaSpeed;                          // 0xB0
+	float   FOV;                                 // 0xB4
+	float   FOVSpeed;                            // 0xB8
+	float   Beta;                                // 0xBC (m_fHorizontalAngle)
+	float   BetaSpeed;                           // 0xC0
+	float   Distance;                            // 0xC4
+	float   DistanceSpeed;                       // 0xC8
+	float   CA_MIN_DISTANCE;                     // 0xCC
+	float   CA_MAX_DISTANCE;                     // 0xD0
+	float   SpeedVar;                            // 0xD4
+	float   m_fCameraHeightMultiplier;           // 0xD8
+	float   m_fTargetZoomGroundOne;              // 0xDC
+	float   m_fTargetZoomGroundTwo;              // 0xE0
+	float   m_fTargetZoomGroundThree;            // 0xE4
+	float   m_fTargetZoomOneZExtra;              // 0xE8
+	float   m_fTargetZoomTwoZExtra;              // 0xEC
+	float   m_fTargetZoomTwoInteriorZExtra;      // 0xF0
+	float   m_fTargetZoomThreeZExtra;            // 0xF4
+	float   m_fTargetZoomZCloseIn;               // 0xF8
+	float   m_fMinRealGroundDist;                // 0xFC
+	float   m_fTargetCloseInDist;                // 0x100
+	float   m_fBeta_Targeting;                   // 0x104
+	float   m_fX_Targetting;                     // 0x108
+	float   m_fY_Targetting;                     // 0x10C
+	void*   m_pCarWeAreFocussingOn;              // 0x110
+	void*   m_pCarWeAreFocussingOnI;             // 0x114
+	float   m_fCamBumpedHorz;                    // 0x118
+	float   m_fCamBumpedVert;                    // 0x11C
+	uint32  m_nCamBumpedTime;                    // 0x120
+	CVector m_cvecSourceSpeedOverOneFrame;       // 0x124
+	CVector m_cvecTargetSpeedOverOneFrame;       // 0x130
+	CVector m_cvecUpOverOneFrame;                // 0x13C
+	CVector m_cvecTargetCoorsForFudgeInter;      // 0x148
+	CVector m_cvecCamFixedModeVector;            // 0x154
+	CVector m_cvecCamFixedModeSource;            // 0x160
+	CVector m_cvecCamFixedModeUpOffSet;          // 0x16C
+	CVector m_vecLastAboveWaterCamPosition;      // 0x178
+	CVector m_vecBufferedPlayerBodyOffset;       // 0x184
+	CVector Front;                               // 0x190
+	CVector Source;                              // 0x19C
+	CVector SourceBeforeLookBehind;              // 0x1A8
+	CVector Up;                                  // 0x1B4
+	CVector m_arrPreviousVectors[2];             // 0x1C0
+	CVector m_avecTargetHistoryPos[4];           // 0x1D8
+	uint32  m_anTargetHistoryTime[4];            // 0x208
+	uint32  m_nCurrentHistoryPoints;             // 0x218
+	CEntitySA* CamTargetEntity;                  // 0x21C
+	float   m_fCameraDistance;                   // 0x220
+	float   m_fIdealAlpha;                       // 0x224
+	float   m_fPlayerVelocity;                   // 0x228
+	CAutomobile* m_pLastCarEntered;              // 0x22C
+	CPed*   m_pLastPedLookedAt;                  // 0x230
+	bool    m_bFirstPersonRunAboutActive;        // 0x234
+
+	void GetVectorsReadyForRW(void);
+	void Process_FollowCar_SA_SA(const CVector&, float, float, float, bool);
+};
+static_assert(sizeof(CCamSA) == 0x238, "CCamSA: wrong size");
+
+struct CCameraSA : public CPlaceableSA
+{
+	uint8   _pad18[0x1A - 0x18];         // 0x18
+	bool    m_bCamDirectlyBehind;        // 0x1A
+	bool    m_bCamDirectlyInFront;       // 0x1B
+	uint8   _pad1C[0x21 - 0x1C];         // 0x1C
+	bool    m_bIdleOn;                   // 0x21
+	uint8   _pad22[0x28 - 0x22];         // 0x22
+	bool    m_bJustCameOutOfGarage;      // 0x28
+	uint8   _pad29[0x37 - 0x29];         // 0x29
+	bool    m_bUseTransitionBeta;        // 0x37
+	uint8   _pad38[0x40 - 0x38];         // 0x38
+	bool    m_bVehicleSuspenHigh;        // 0x40
+	uint8   _pad41[0x58 - 0x41];         // 0x41
+	uint8   m_uiTransitionState;         // 0x58
+	uint8   ActiveCam;                   // 0x59
+	uint8   _pad5A[0x74 - 0x5A];         // 0x5A
+	uint32  m_uiTimeWeEnteredIdle;       // 0x74
+	uint8   _pad78[0xB4 - 0x78];         // 0x78
+	int32   CarZoomIndicator;            // 0xB4 (m_nCarZoom)
+	float   CarZoomValue;                // 0xB8 (m_fCarZoomBase)
+	float   CarZoomValueTotal;           // 0xBC (m_fCarZoomTotal)
+	float   CarZoomValueSmooth;          // 0xC0 (m_fCarZoomSmoothed)
+	uint8   _padC4[0x174 - 0xC4];        // 0xC4
+	CCamSA  Cams[3];                     // 0x174
+};
+extern CCameraSA *TheCameraSA;

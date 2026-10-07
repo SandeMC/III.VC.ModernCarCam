@@ -113,6 +113,8 @@ const float TiltSpeedStep[] = { 0.016f, 0.016f, 0.0002f, 0.0014f, 0.016f };
 // default feature set. Only the free camera, free turret control and fixes are
 // added on top of the game-matched camera; everything else is opt-in.
 void applyProfile(ModernProfile profile, bool vc) {
+	const bool sa = isSA();
+
 	switch (profile) {
 	case PROFILE_SA_CAM:
 	case PROFILE_IV:
@@ -126,7 +128,9 @@ void applyProfile(ModernProfile profile, bool vc) {
 		masterProfile = PROFILE_CUSTOM;
 		break;
 	default:
-		masterProfile = PROFILE_VANILLA;
+		// Game-Matched on San Andreas uses the SA follow camera (SA's native
+		// vehicle camera), not the III/VC "on a string" camera.
+		masterProfile = (profile == PROFILE_GAME_MATCHED && sa) ? PROFILE_SA : PROFILE_VANILLA;
 		break;
 	}
 	distanceProfile = masterProfile;
@@ -156,6 +160,23 @@ void applyProfile(ModernProfile profile, bool vc) {
 	cameraDistanceScale = 1.0f;
 	enhancedVC = false;
 	cameraHeight = 0.0f;
+
+	if (sa) {
+		// San Andreas' native camera aspects. The follow camera floats (no
+		// anchor), uses its own stiffness, its per-vehicle zoom and bike-passenger
+		// height, and has no III/VC steering wobble or slope tilt. Free look is
+		// handled by the mod's camera on SA too (see CamSA.cpp), so the toggle
+		// stays on. These are the defaults; the profile below can still turn its
+		// own features on.
+		cameraAnchoring = 0;
+		cameraStiffness = -1.0f;
+		cameraWobble = false;
+		pitchTilt = 2;            // match game -> no slope tilt on SA
+		dynamicSpeedFOV = false;
+		vehicleSpecificZoom = true;
+		heightIncreaseOnBike = true;
+		mouseFreeLook = true;
+	}
 
 	switch (profile) {
 	case PROFILE_ENHANCED:
@@ -206,13 +227,14 @@ void applyProfile(ModernProfile profile, bool vc) {
 		dynamicSpeedFOV = true;
 		break;
 	case PROFILE_SA_CAM:
-		// San Andreas has no steering wobble and no VC-style slope tilt.
+		// Authentic San Andreas camera with the mod's fixes: no steering wobble,
+		// no slope tilt and no dynamic speed FOV.
 		cameraWobble = false;
 		pitchTilt = 0;
 		vehicleSpecificZoom = true;
 		heightIncreaseOnBike = true;
 		cameraAnchoring = 0;
-		dynamicSpeedFOV = true;
+		dynamicSpeedFOV = false;
 		break;
 	case PROFILE_LCS_CAM:
 		// Liberty City Stories has no steering wobble or slope tilt either.
@@ -240,6 +262,21 @@ void applyProfile(ModernProfile profile, bool vc) {
 		break;
 	default:
 		break;
+	}
+
+	// Enhanced on San Andreas enables the same features it does in GTA III, but
+	// the SA camera keeps its own anchor, stiffness, distance, FOV and angles.
+	if (sa && profile == PROFILE_ENHANCED) {
+		masterProfile = PROFILE_SA;
+		distanceProfile = PROFILE_SA;
+		fovProfile = PROFILE_SA;
+		anglesProfile = PROFILE_SA;
+		cameraAnchoring = 0;
+		cameraStiffness = -1.0f;
+		// The SA camera keeps its own steering feel: no VC steering wobble and
+		// no VCS camera shake on SA.
+		cameraWobble = false;
+		vcsCamShake = false;
 	}
 }
 

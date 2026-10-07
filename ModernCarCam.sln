@@ -1,9 +1,9 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.29215.179
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "III.VC.ModernCarCam", "ModernCarCam\ModernCarCam.vcxproj", "{F06BC71F-1298-453C-83EA-D29C909403C5}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "III.VC.SA.ModernCarCam", "ModernCarCam\ModernCarCam.vcxproj", "{F06BC71F-1298-453C-83EA-D29C909403C5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

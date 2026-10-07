@@ -82,10 +82,10 @@ void LoadSettings()
 	if (dot) strcpy(dot, ".ini");
 
 	if (GetFileAttributesA(iniPath) == INVALID_FILE_ATTRIBUTES) {
-		if (GetFileAttributesA(".\\III.VC.ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
-			strcpy(iniPath, ".\\III.VC.ModernCarCam.ini");
-		} else if (GetFileAttributesA(".\\scripts\\III.VC.ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
-			strcpy(iniPath, ".\\scripts\\III.VC.ModernCarCam.ini");
+		if (GetFileAttributesA(".\\III.VC.SA.ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
+			strcpy(iniPath, ".\\III.VC.SA.ModernCarCam.ini");
+		} else if (GetFileAttributesA(".\\scripts\\III.VC.SA.ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
+			strcpy(iniPath, ".\\scripts\\III.VC.SA.ModernCarCam.ini");
 		}
 	}
 
@@ -223,4 +223,15 @@ void LoadSettings()
 	int keepWater = GetPrivateProfileIntA("Features", "KeepCameraOverWater", -1, iniPath);
 	if (keepWater != -1)
 		seeUnderwater = (keepWater == 0);
+
+	// Enhanced on San Andreas keeps the SA distance/FOV/angles, anchor and
+	// stiffness even if the ini overrides them. The VC steering wobble and VCS
+	// camera shake are off by default on SA but can still be enabled here.
+	if (isSA() && cameraProfile == PROFILE_ENHANCED) {
+		distanceProfile = PROFILE_SA;
+		fovProfile = PROFILE_SA;
+		anglesProfile = PROFILE_SA;
+		cameraAnchoring = 0;
+		cameraStiffness = -1.0f;
+	}
 }

@@ -43,57 +43,94 @@ DebugMenuAPI gDebugMenuAPI;
 
 // -----
 
-void(*&RwCamera) = *AddressByVersion<void**>(0x72676C, 0, 0, 0x8100BC, 0, 0);
+// SA: points at CCamera::m_pRwCamera (0xB6F028 + 0x954). The RwCamera near
+// plane lives at +0x80 in RenderWare (verified in rwcore.h).
+void(*&RwCamera) = *AddressByVersion<void**>(0x72676C, 0, 0, 0x8100BC, 0, 0, 0xB6F97C);
 
 CCameraIII *TheCameraIII = (CCameraIII*)0x6FACF8;
 CCameraVC *TheCameraVC = (CCameraVC*)0x7E4688;
+CCameraSA *TheCameraSA = (CCameraSA*)0xB6F028; // SA CCamera singleton
 
 // Actually static member of CCamera
-bool& m_bUseMouse3rdPerson = *AddressByVersion<bool*>(0x5F03D8, 0, 0, 0xA10B4C, 0, 0);
+bool& m_bUseMouse3rdPerson = *AddressByVersion<bool*>(0x5F03D8, 0, 0, 0xA10B4C, 0, 0, 0xB6EC2E);
 
 cDMAudio &DMAudio = *AddressByVersion<cDMAudio*>(0x95CDBE, 0, 0, 0xA10B8A, 0, 0);
 
-// These are static members of CWorld
-CColPoint& ms_testSpherePoint = *AddressByVersion<CColPoint*>(0x6E64C0, 0, 0, 0x7D18C0, 0, 0);
-CEntity*& pIgnoreEntity = *AddressByVersion<CEntity **>(0x8F6494, 0, 0, 0x9B6E58, 0, 0);
+// These are static members of CWorld. SA's TestSphereAgainstWorld writes into
+// CWorld::gaTempSphereColPoints (0xB9B250); the engine only reads the point of
+// the first entry, so we expose that as ms_testSpherePoint.
+CColPoint& ms_testSpherePoint = *AddressByVersion<CColPoint*>(0x6E64C0, 0, 0, 0x7D18C0, 0, 0, 0xB9B250);
+CEntity*& pIgnoreEntity = *AddressByVersion<CEntity **>(0x8F6494, 0, 0, 0x9B6E58, 0, 0, 0xB7CD68);
 
 #pragma warning(push)
 #pragma warning(disable: 4100) // the naked address wrappers forward every argument untouched
 
-addr plosAddress = AddressByVersion<addr>(0x4AF970, 0, 0, 0x4D92D0, 0, 0);
+// SA addresses: CWorld::ProcessLineOfSight 0x56BA00, TestSphereAgainstWorld
+// 0x569E20, FindGroundZFor3DCoord 0x5696C0, FindRoofZFor3DCoord 0x569750,
+// ProcessVerticalLine 0x5674E0, GetIsLineOfSightClear 0x56A490. All verified
+// against gta-sa.exe / gta-reversed.
+addr plosAddress = AddressByVersion<addr>(0x4AF970, 0, 0, 0x4D92D0, 0, 0, 0x56BA00);
 WRAPPER bool CWorldIII::ProcessLineOfSight(const CVector& point1, const CVector& point2, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreSomeObjects) { EAXJMP(plosAddress); }
 WRAPPER bool CWorldVC::ProcessLineOfSight(const CVector& point1, const CVector& point2, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreSomeObjects, bool sth) { EAXJMP(plosAddress); }
+WRAPPER bool CWorldSA::ProcessLineOfSight(const CVector& point1, const CVector& point2, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreCamera, bool shootThrough) { EAXJMP(plosAddress); }
 
-addr tsawAddress = AddressByVersion<addr>(0x4B4710, 0, 0, 0x4D3F40, 0, 0);
+addr tsawAddress = AddressByVersion<addr>(0x4B4710, 0, 0, 0x4D3F40, 0, 0, 0x569E20);
 WRAPPER CEntity* CWorldIII::TestSphereAgainstWorld(CVector centre, float distance, CEntity* entityToIgnore, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSomeObjects) { EAXJMP(tsawAddress); }
 WRAPPER CEntity* CWorldVC::TestSphereAgainstWorld(CVector centre, float distance, CEntity* entityToIgnore, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSomeObjects) { EAXJMP(tsawAddress); }
+WRAPPER CEntity* CWorldSA::TestSphereAgainstWorld(CVector centre, float distance, CEntity* entityToIgnore, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreCamera) { EAXJMP(tsawAddress); }
 
-addr fgz3dAddress = AddressByVersion<addr>(0x4B3AE0, 0, 0, 0x4D53A0, 0, 0);
+addr fgz3dAddress = AddressByVersion<addr>(0x4B3AE0, 0, 0, 0x4D53A0, 0, 0, 0x5696C0);
 WRAPPER float CWorldIII::FindGroundZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(fgz3dAddress); }
 WRAPPER float CWorldVC::FindGroundZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(fgz3dAddress); }
+WRAPPER float CWorldSA::FindGroundZFor3DCoord(float x, float y, float z, bool* found, CEntity** outEntity) { EAXJMP(fgz3dAddress); }
 
-addr frz3dAddress = AddressByVersion<addr>(0x4B3B50, 0, 0, 0x4D51D0, 0, 0);
+addr frz3dAddress = AddressByVersion<addr>(0x4B3B50, 0, 0, 0x4D51D0, 0, 0, 0x569750);
 WRAPPER float CWorldIII::FindRoofZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(frz3dAddress); }
 WRAPPER float CWorldVC::FindRoofZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(frz3dAddress); }
+WRAPPER float CWorldSA::FindRoofZFor3DCoord(float x, float y, float z, bool* found) { EAXJMP(frz3dAddress); }
 
-addr pvlAddress = AddressByVersion<addr>(0x4B0DE0, 0, 0, 0x4D8B00, 0, 0);
+addr pvlAddress = AddressByVersion<addr>(0x4B0DE0, 0, 0, 0x4D8B00, 0, 0, 0x5674E0);
 WRAPPER bool CWorldIII::ProcessVerticalLine(const CVector& origin, float distance, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, CStoredCollPoly* outCollPoly) { EAXJMP(pvlAddress); }
 WRAPPER bool CWorldVC::ProcessVerticalLine(const CVector& origin, float distance, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, CStoredCollPoly* outCollPoly) { EAXJMP(pvlAddress); }
+WRAPPER bool CWorldSA::ProcessVerticalLine(const CVector& origin, float distance, CColPoint& point, CEntity*& entity, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, CStoredCollPoly* outCollPoly) { EAXJMP(pvlAddress); }
 
-addr loscAddress = AddressByVersion<addr>(0x4AEAA0, 0, 0, 0x4DA560, 0, 0);
+addr loscAddress = AddressByVersion<addr>(0x4AEAA0, 0, 0, 0x4DA560, 0, 0, 0x56A490);
 WRAPPER bool CWorldIII::GetIsLineOfSightClear(const CVector& origin, const CVector& target, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreSomeObjects) { EAXJMP(loscAddress); }
 WRAPPER bool CWorldVC::GetIsLineOfSightClear(const CVector& origin, const CVector& target, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreSomeObjects) { EAXJMP(loscAddress); }
+WRAPPER bool CWorldSA::GetIsLineOfSightClear(const CVector& origin, const CVector& target, bool checkBuildings, bool checkVehicles, bool checkPeds, bool checkObjects, bool checkDummies, bool ignoreSeeThrough, bool ignoreSomeObjects) { EAXJMP(loscAddress); }
 
-addr gwlnwAddress = AddressByVersion<addr>(0x555440, 0, 0, 0x5C2BE0, 0, 0);
-WRAPPER bool CWaterLevel::GetWaterLevelNoWaves(float fX, float fY, float fZ, float* pfOutLevel) { EAXJMP(gwlnwAddress); }
+// SA's CWaterLevel::GetWaterLevelNoWaves takes a CVector by value plus three
+// out-pointers, so it cannot be forwarded through the shared 4-float wrapper.
+// The III/VC functions are still called through a typed function pointer.
+addr gwlnwAddress = AddressByVersion<addr>(0x555440, 0, 0, 0x5C2BE0, 0, 0, 0x6E8580);
+bool CWaterLevel::GetWaterLevelNoWaves(float fX, float fY, float fZ, float* pfOutLevel) {
+	if (isSA()) {
+		typedef bool(__cdecl* tGetWaterLevelNoWaves)(CVector, float*, float*, float*);
+		return ((tGetWaterLevelNoWaves)gwlnwAddress)(CVector(fX, fY, fZ), pfOutLevel, nil, nil);
+	}
+	typedef bool(__cdecl* tGetWaterLevelNoWavesIII)(float, float, float, float*);
+	return ((tGetWaterLevelNoWavesIII)gwlnwAddress)(fX, fY, fZ, pfOutLevel);
+}
 
-addr rcsncpAddress = AddressByVersion<addr>(0x5A5070, 0, 0, 0x64A860, 0, 0);
-WRAPPER void* RwCameraSetNearClipPlane(void* camera, float nearClip) { EAXJMP(rcsncpAddress); }
+// SA's RenderWare near-plane function is not hooked; writing the near plane
+// (RwCamera + 0x80, verified from rwcore.h) directly is equivalent for the
+// mod's purposes. III/VC still call the game's function.
+addr rcsncpAddress = AddressByVersion<addr>(0x5A5070, 0, 0, 0x64A860, 0, 0, 0);
+void* RwCameraSetNearClipPlane(void* camera, float nearClip) {
+	if (isSA()) {
+		if (nearClip < 0.0f)
+			nearClip = 0.0f;
+		*(float*)((addr)camera + 0x80) = nearClip;
+		return camera;
+	}
+	typedef void*(__cdecl* tRwCameraSetNearClipPlane)(void*, float);
+	return ((tRwCameraSetNearClipPlane)rcsncpAddress)(camera, nearClip);
+}
 
 addr posAddress = AddressByVersion<addr>(0x57C840, 0, 0, 0x5F9DA0, 0, 0);
 WRAPPER void cDMAudio::PlayOneShot(int32 audioEntity, uint16 oneShot, float volume) { EAXJMP(posAddress); }
 
-CBaseModelInfo** CModelInfo::ms_modelInfoPtrs = AddressByVersion<CBaseModelInfo **>(0x83D408, 0, 0, 0x92D4C8, 0, 0);
+CBaseModelInfo** CModelInfo::ms_modelInfoPtrs = AddressByVersion<CBaseModelInfo **>(0x83D408, 0, 0, 0x92D4C8, 0, 0, 0xA9B0C8);
 
 addr attachAddress = AddressByVersion<addr>(0x4B8DD0, 0, 0, 0x4DFA40, 0, 0);
 addr updateRwAddress = AddressByVersion<addr>(0x4B8EC0, 0, 0, 0x4DF8F0, 0, 0);
@@ -101,14 +138,17 @@ WRAPPER void CMatrix::Attach(RwMatrix* matrix, bool owner) { EAXJMP(attachAddres
 WRAPPER void CMatrix::UpdateRW(void) { EAXJMP(updateRwAddress); }
 #pragma warning(pop)
 
-addr ditbAddress = AddressByVersion<addr>(0x48BFB0, 0, 0, 0x4A4C02, 0, 0);
+// SA: the debug-menu intercept is only installed for III/VC. (gta-sa.exe's
+// DebugInitTextBuffer call site is not required for the camera port.)
+addr ditbAddress = AddressByVersion<addr>(0x48BFB0, 0, 0, 0x4A4C02, 0, 0, 0);
 void (*DebugInitTextBuffer)();
 
-// Actually static member of CVehicle
+// Actually static member of CVehicle. SA uses its inverse (m_bEnableMouseSteering
+// at 0xC1CC02); see MouseSteeringDisabled() in CamSA.cpp.
 bool &m_bDisableMouseSteering = *AddressByVersion<bool*>(0x60252C, 0, 0, 0x69C610, 0, 0);
 
-uint32 &m_snTimeInMilliseconds = *AddressByVersion<uint32*>(0x885B48, 0, 0, 0x974B2C, 0, 0);
-float &ms_fTimeStep = *AddressByVersion<float*>(0x8E2CB4, 0, 0, 0x975424, 0, 0);
+uint32 &m_snTimeInMilliseconds = *AddressByVersion<uint32*>(0x885B48, 0, 0, 0x974B2C, 0, 0, 0xB7CB84);
+float &ms_fTimeStep = *AddressByVersion<float*>(0x8E2CB4, 0, 0, 0x975424, 0, 0, 0xB7CB5C);
 
 bool lookingRelativelyLeft = false;
 bool lookingRelativelyRight = false;
@@ -261,9 +301,31 @@ CCamIII::GetVectorsReadyForRW(void)
 	Up.Normalise();
 }
 
+void
+CCamSA::GetVectorsReadyForRW(void)
+{
+	Front.Normalise();
+	if (Front.x == 0.0f && Front.y == 0.0f) {
+		Front.x = 0.0001f;
+		Front.y = 0.0001f;
+	}
+	CVector right = CrossProduct(Front, CVector(0.0f, 0.0f, 1.0f));
+	if (right.MagnitudeSqr() < 0.0001f)
+		right = CVector(1.0f, 0.0f, 0.0f);
+	else
+		right.Normalise();
+
+	CVector up0 = CrossProduct(right, Front);
+	up0.Normalise();
+
+	Up = up0 * cosf(f_Roll) - right * sinf(f_Roll);
+	Up.Normalise();
+}
+
 // Needed for storing previous mode for some unknown alpha angle effect.
 // Credits goes to The Hero - aap for reversing it (comments are belong to him)
-#define currentMode (isIII() ? TheCameraIII->Cams[TheCameraIII->ActiveCam].Mode : TheCameraVC->Cams[TheCameraVC->ActiveCam].Mode)
+#define currentMode (isSA() ? TheCameraSA->Cams[TheCameraSA->ActiveCam].Mode : \
+	(isIII() ? TheCameraIII->Cams[TheCameraIII->ActiveCam].Mode : TheCameraVC->Cams[TheCameraVC->ActiveCam].Mode))
 
 int previousMode = 0;
 
@@ -388,10 +450,25 @@ DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 					Patch(a, zoomTable[i]);
 				}
 			}
+		// SA
+		} else if (*(DWORD*)SA_10_US_SIGNATURE_ADDR == SA_10_US_SIGNATURE) {
+
+			// CCam::WellBufferMe (0x509AE0)
+			InjectHook(0x509AE0, &WellBufferMe, PATCH_JUMP);
+
+			// CCam::Process_FollowCar_SA (0x5245B0). Replacing the whole
+			// function also removes SA's per-frame "cam->FOV = 70.0f" write at
+			// 0x524BE4, so dynamic/custom FOV works without a separate NOP.
+			InjectHook(0x5245B0, &CCamSA::Process_FollowCar_SA_SA, PATCH_JUMP);
+
+			// Note: the III/VC BetterDriveBy and FakeCarGun(UpDown/LeftRight)
+			// hooks are not installed on SA; those address/pad-internals differ.
 		}
 		else return FALSE;
 
-		InterceptCall(&DebugInitTextBuffer, registerDebugMenu, ditbAddress);
+		// The SA debug-menu call site is not reversed here; only III/VC expose it.
+		if (ditbAddress)
+			InterceptCall(&DebugInitTextBuffer, registerDebugMenu, ditbAddress);
 	}
 	return TRUE;
 }

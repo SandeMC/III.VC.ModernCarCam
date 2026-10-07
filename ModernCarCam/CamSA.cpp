@@ -18,6 +18,38 @@
 // licenses/WidescreenFixesPack.txt).
 // ---------------------------------------------------------------------------
 
+// SA exposes CVehicle::m_bEnableMouseSteering (the inverse of the III/VC
+// m_bDisableMouseSteering the shared engine was written against).
+inline bool MouseSteeringDisabled() {
+	if (isSA())
+		return !*(bool*)0xC1CC02; // CVehicle::m_bEnableMouseSteering
+	return m_bDisableMouseSteering;
+}
+
+// Runs the authentic III/VC anchoring engine. Specialised to a no-op for SA:
+// San Andreas has no "camera on a string" vehicle mode, so anchoring is
+// ignored there (the SA follow camera always runs). The generic definition is
+// only instantiated for III/VC, whose engines CamVanilla.cpp provides.
+template<class CamClass, class CameraClass, class VehicleClass, class WorldClass, class ColModelClass>
+void
+RunVanillaAnchor(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, const CVector& CameraTarget, float TargetOrientation)
+{
+	if (cam->Mode == MODE_BEHINDBOAT) {
+		if (isVC())
+			Process_BehindBoat_VC<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(TheCamera, cam, car, CameraTarget, TargetOrientation);
+		else
+			Process_BehindBoat_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass>(TheCamera, cam, car, CameraTarget, TargetOrientation);
+	} else {
+		Process_Cam_On_A_String_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(TheCamera, cam, car, CameraTarget, TargetOrientation);
+	}
+}
+
+template<>
+void
+RunVanillaAnchor<CCamSA, CCameraSA, CVehicleSA, CWorldSA, CColModelSA>(CCameraSA*, CCamSA*, CVehicleSA*, const CVector&, float)
+{
+}
+
 template<class CamClass, class CameraClass, class VehicleClass, class WorldClass, class ColModelClass>
 void
 Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, const CVector& CameraTarget, float TargetOrientation)
@@ -64,19 +96,12 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 			+ CVector(0.0f, 0.0f, cameraDriverOffset.z);
 	}
 
-	bool useAnchoring = (cameraAnchoring == 1) || (cameraAnchoring == 2 && (masterProfile == PROFILE_VANILLA || (distanceProfile == PROFILE_VANILLA && anglesProfile == PROFILE_VANILLA)));
+	// San Andreas has no "on a string" vehicle mode, so anchoring is ignored
+	// there; the SA follow camera always runs.
+	bool useAnchoring = !isSA() && ((cameraAnchoring == 1) || (cameraAnchoring == 2 && (masterProfile == PROFILE_VANILLA || (distanceProfile == PROFILE_VANILLA && anglesProfile == PROFILE_VANILLA))));
 	if (useAnchoring) {
-		if (cam->Mode == MODE_BEHINDBOAT) {
-			if (isVC())
-				Process_BehindBoat_VC<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(
-					TheCamera, cam, car, adjustedTarget, TargetOrientation);
-			else
-				Process_BehindBoat_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass>(
-					TheCamera, cam, car, adjustedTarget, TargetOrientation);
-		} else {
-			Process_Cam_On_A_String_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(
-				TheCamera, cam, car, adjustedTarget, TargetOrientation);
-		}
+		RunVanillaAnchor<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(
+			TheCamera, cam, car, adjustedTarget, TargetOrientation);
 		return;
 	}
 
@@ -85,10 +110,11 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 
 	uint8 camSetArrPos = 0;
 
-	// For compatibility with III with Aircraft mod and VC
-	bool isPlane = isIII() && car->m_modelIndex == MI_III_DODO || GetHandlingFlags(car) & 0x40000;
-	bool isHeli = GetHandlingFlags(car) & 0x20000;
-	bool isBike = (GetHandlingFlags(car) & 0x10000) || car->IsBike();
+	// Vehicle classification differs per game, so it is delegated to the
+	// per-game wrapper (handling flags on III/VC, eVehicleType on SA).
+	bool isPlane = car->IsPlaneType();
+	bool isHeli = car->IsHeliType();
+	bool isBike = car->IsBikeType();
 	bool isCar = car->IsCar() && !isPlane && !isHeli && !isBike;
 
 	CPad* pad = &pad0;
@@ -135,7 +161,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	uint8 alphaArrPos = (camSetArrPos > 4 ? (isPlane ? 3 : (isHeli ? 2 : 0)) : camSetArrPos);
 	float zoomModeAlphaOffset = 0.0f;
 
-	if (isHeli && car->m_status == STATUS_PLAYER_REMOTE) {
+	if (isHeli && car->GetStatus() == STATUS_PLAYER_REMOTE) {
 		if (anglesProfile == PROFILE_CUSTOM)
 			zoomModeAlphaOffset = ZmTwoAlphaOffsetCustom[alphaArrPos];
 		else if (anglesProfile == PROFILE_VANILLA)
@@ -272,7 +298,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		if (isBike) {
 			TargetCoors += 0.6f * vehHeight * car->GetUp();
 		}
-		else if (isHeli && car->m_status != STATUS_PLAYER_REMOTE) {
+		else if (isHeli && car->GetStatus() != STATUS_PLAYER_REMOTE) {
 			TargetCoors.x += 0.6f * car->GetUp().x * colMaxZ;
 			TargetCoors.y += 0.6f * car->GetUp().y * colMaxZ;
 			TargetCoors.z += 0.6f * car->GetUp().z * colMaxZ;
@@ -282,7 +308,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		}
 	}
 	else {
-		if (!isHeli || car->m_status == STATUS_PLAYER_REMOTE) {
+		if (!isHeli || car->GetStatus() == STATUS_PLAYER_REMOTE) {
 			float radiusToStayOutside = colMaxZ * CARCAM_SET[camSetArrPos][0] - CARCAM_SET[camSetArrPos][2];
 			if (radiusToStayOutside > 0.0f) {
 				TargetCoors.z += radiusToStayOutside;
@@ -595,13 +621,14 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	}
 
 	// Using GetCarGun(LR/UD) with Y-axis invert check will give us same unprocessed RightStick value as SA
-	float stickX = -(pad->GetCarGunLeftRight());
-	float stickY = pad->GetCarGunUpDown();
+	float stickX = (float)-(pad->GetCarGunLeftRight());
+	float stickY = (float)pad->GetCarGunUpDown();
 
 	// In SA this checks for m_bUseMouse3rdPerson so num2/num8 do not move camera
-	// when Keyboard & Mouse controls are used. To work best with GInput, check for actual pad state instead
+	// when Keyboard & Mouse controls are used. To work best with GInput, check for actual pad state instead.
+	// On SA the vertical axis is always read, so the gamepad can look up and down.
 	const bool ginputHasPad = ginputPad->HasPadInHands();
-	if (ginputLoaded == 2 ? !ginputHasPad : m_bUseMouse3rdPerson)
+	if (!isSA() && (ginputLoaded == 2 ? !ginputHasPad : m_bUseMouse3rdPerson))
 		stickY = 0.0f;
 	else {
 		// Added in r4. GInput doesn't hook VC's Y-axis invert option, so that was needed
@@ -613,6 +640,17 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 			if (*(bool*)0xA10AF7)
 				stickY = -stickY;
 	}
+
+	// Exponential smoothing so the gamepad camera does not feel rough.
+	static float smoothedStickX = 0.0f;
+	static float smoothedStickY = 0.0f;
+	float stickSmoothing = min(1.0f, ms_fTimeStep * 0.25f);
+	smoothedStickX += (stickX - smoothedStickX) * stickSmoothing;
+	smoothedStickY += (stickY - smoothedStickY) * stickSmoothing;
+	stickX = smoothedStickX;
+	stickY = smoothedStickY;
+
+	const bool stickActive = fabsf(stickX) > 0.05f || fabsf(stickY) > 0.05f;
 
 	float v103 = cam->FOV * 0.0125f;
 
@@ -632,7 +670,10 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		xMovement = 0.0;
 	}
 
-	if (camSetArrPos == 0 || (distanceProfile == PROFILE_LCS && camSetArrPos == 7)) {
+	// The III/VC "steering nudges the camera" tweak reads the driver's ped
+	// objective, which is a III/VC-only field layout. San Andreas does not need
+	// it (its own camera handles it).
+	if (!isSA() && (camSetArrPos == 0 || (distanceProfile == PROFILE_LCS && camSetArrPos == 7))) {
 		// This is not working on cars as SA
 		// Because III/VC doesn't have any buttons tied to LeftStick if you're not in Classic Configuration, using Dodo or using GInput/Pad, so :shrug:
 		if (fabsf(pad->GetSteeringUpDown()) > 120.0f) {
@@ -650,15 +691,16 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	bool mouseChangesBeta = false;
 
 	// FIX: Disable mouse movement in drive-by, it's buggy. Original SA bug.
-	if (mouseFreeLook && m_bUseMouse3rdPerson && !GetDisablePlayerControls(pad) && nextDirectionIsForward)
+	// Free look is native to SA, so it runs there even when the mod's toggle is off.
+	if ((mouseFreeLook || isSA()) && m_bUseMouse3rdPerson && !GetDisablePlayerControls(pad) && nextDirectionIsForward)
 	{
-		float mouseY = CPad::NewMouseControllerState.y * 2.0f;
-		float mouseX = CPad::NewMouseControllerState.x * -2.0f;
+		float mouseY = GetMouseControllerY() * 2.0f;
+		float mouseX = GetMouseControllerX() * -2.0f;
 
 		// If you want an ability to toggle free cam while steering with mouse, you can add an OR after DisableMouseSteering.
 		// There was a pad->NewState.m_bVehicleMouseLook in SA, which doesn't exists in III.
-
-		if ((mouseX != 0.0 || mouseY != 0.0) && (m_bDisableMouseSteering))
+		// SA keeps its native mouse look regardless of the mouse-steering option.
+		if ((mouseX != 0.0 || mouseY != 0.0) && (isSA() || MouseSteeringDisabled()))
 		{
 			float v113 = cam->FOV * 0.0125;
 			yMovement = mouseY * v113 * GetMouseAccel(TheCamera); // Same as SA, horizontal sensitivity.
@@ -680,6 +722,35 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 			stepsLeftToChangeBetaByMouse = max(0.0f, stepsLeftToChangeBetaByMouse - ms_fTimeStep);
 			mouseChangesBeta = true;
 		}
+	}
+
+	// Gamepad right stick drives the camera directly (the III/VC free-look)
+	// instead of through SA's damped speed blending, which fights the player.
+	// This runs after the mouse block so a stick push is not cancelled by the
+	// mouse hold from the previous frame.
+	if ((mouseFreeLook || isSA()) && stickActive && !GetDisablePlayerControls(pad) && nextDirectionIsForward) {
+		xMovement = fabsf(stickX) * (v103 * 0.071428575f) * stickX * 0.007f * 0.007f;
+		yMovement = fabsf(stickY) * (v103 * 0.042857144f) * stickY * 0.007f * 0.007f;
+		cam->BetaSpeed = 0.0f;
+		cam->AlphaSpeed = 0.0f;
+		targetAlpha = cam->Alpha;
+		stepsLeftToChangeBetaByMouse = 50.0f;
+		mouseChangesBeta = true;
+	}
+
+	// Ease back to the default camera angle after free look, like the III/VC
+	// camera, instead of letting the native blend snap back to straight. The
+	// scale ramps from a gentle 0.2 up to full once the hold has run out.
+	static bool freeLookWasActive = false;
+	static float freeLookReturn = 0.0f;
+	const bool freeLookNow = mouseChangesBeta;
+	if (freeLookWasActive && !freeLookNow)
+		freeLookReturn = 1.0f;
+	freeLookWasActive = freeLookNow;
+	float freeLookReturnScale = 1.0f;
+	if (freeLookReturn > 0.0f) {
+		freeLookReturn = max(0.0f, freeLookReturn - ms_fTimeStep / 30.0f);
+		freeLookReturnScale = 0.2f + 0.8f * (1.0f - freeLookReturn);
 	}
 
 	if (correctAlpha) {
@@ -712,7 +783,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		if (mouseChangesBeta)
 			v121 = betaSpeedFromStickX;
 		else
-			v121 = ms_fTimeStep * cam->BetaSpeed;
+			v121 = ms_fTimeStep * cam->BetaSpeed * freeLookReturnScale;
 		cam->Beta = v121 + cam->Beta;
 	}
 	
@@ -759,7 +830,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	else
 	{
 		alphaWithSpeedAccounted = ms_fTimeStep * cam->AlphaSpeed + targetAlpha;
-		cam->Alpha += targetAlphaBlendAmount;
+		cam->Alpha += targetAlphaBlendAmount * freeLookReturnScale;
 	}
 
 	if (cam->Alpha <= maxAlphaAllowed)
@@ -915,7 +986,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 
 		CColPoint foundCol;
 		CEntity* foundEnt;
-		pIgnoreEntity = cam->CamTargetEntity;
+		pIgnoreEntity = (CEntity*)cam->CamTargetEntity;
 		if (WorldClass::ProcessLineOfSight(TargetCoors, cam->Source, foundCol, foundEnt, true, flt_9BF250 < 0.1f, false, true, false, true, false))
 		{
 			float obstacleTargetDist = (TargetCoors - foundCol.point).Magnitude();
@@ -1017,8 +1088,10 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	cam->GetVectorsReadyForRW();
 	lookingRelativelyLeft = false;
 	lookingRelativelyRight = false;
-	// SA code from CAutomobile::TankControl/FireTruckControl.
-	if (modernTurretControl && (car->m_modelIndex == Tank || car->m_modelIndex == FireTruk)) {
+	// SA code from CAutomobile::TankControl/FireTruckControl. The turret angles,
+	// vehicle component frames and audio entity live at III/VC offsets, so this
+	// path is left out on SA (a documented limitation).
+	if (!isSA() && modernTurretControl && (car->m_modelIndex == Tank || car->m_modelIndex == FireTruk)) {
 		CVector hi = Multiply3x3(cam->Front, car->GetMatrix());
 
 		// III/VC's firetruck turret angle is reversed
@@ -1093,7 +1166,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 			}
 		}
 	}
-	else if (modernDriveBy && (cam->Mode == MODE_BEHINDBOAT || cam->Mode == MODE_CAMONASTRING) && !isHeli)
+	else if (!isSA() && modernDriveBy && (cam->Mode == MODE_BEHINDBOAT || cam->Mode == MODE_CAMONASTRING) && !isHeli)
 	{
 		CVector hi = Multiply3x3(cam->Front, car->GetMatrix());
 
@@ -1122,4 +1195,13 @@ CCamVC::Process_FollowCar_SA_VC(const CVector &CameraTarget, float TargetOrienta
 {
 	Process_FollowCar_SA<CCamVC, CCameraVC, CVehicleVC, CWorldVC, CColModelVC>(
 		TheCameraVC, this, (CVehicleVC*)this->CamTargetEntity, CameraTarget, TargetOrientation);
+}
+
+// SA's CCam::Process_FollowCar_SA takes an extra trailing bool (sthForScript),
+// which the hook ignores.
+void
+CCamSA::Process_FollowCar_SA_SA(const CVector &CameraTarget, float TargetOrientation, float, float, bool)
+{
+	Process_FollowCar_SA<CCamSA, CCameraSA, CVehicleSA, CWorldSA, CColModelSA>(
+		TheCameraSA, this, (CVehicleSA*)this->CamTargetEntity, CameraTarget, TargetOrientation);
 }

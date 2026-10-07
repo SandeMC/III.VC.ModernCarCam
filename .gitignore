@@ -5,9 +5,6 @@ Debug/
 *.user
 
 # Reference material (not part of the mod)
-hez-gta-re3/
-WidescreenFixesPack-gtavc/
-SACarCamWithModernDriveBy/
-referencemods/
 *.exe
+*.zip
 .kilo/

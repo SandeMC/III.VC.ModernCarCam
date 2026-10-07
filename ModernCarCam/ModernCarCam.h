@@ -274,18 +274,52 @@ constexpr float VCSCamShakeDivisor = 200.0f;
 #define RwFrameGetMatrix(frame) (RwMatrix*)((addr)frame + 0x10)
 #define GetVehicleComponent(car, comp) *(void**)((addr)car + (isIII() ? 0x37C : 0x394) + comp*4) // In CAutomobile. normally returns RwFrame*
 
-#define GetDisablePlayerControls(pad) *((uint8*)((addr)pad + (isIII() ? 0xDF : 0xF0)))
+// SA's CMouseControllerState is { lmb..bmx2, align, z, x, y } whereas the
+// III/VC one is { lmb..bmx2, x, y }. Reading the shared struct's x/y on SA
+// would return z/x, so the SA offsets are used explicitly.
+inline float GetMouseControllerX(void) {
+	if (isSA())
+		return *(float*)(0xB73418 + 0x0C); // CPad::NewMouseControllerState.x
+	return CPad::NewMouseControllerState.x;
+}
+inline float GetMouseControllerY(void) {
+	if (isSA())
+		return *(float*)(0xB73418 + 0x10); // CPad::NewMouseControllerState.y
+	return CPad::NewMouseControllerState.y;
+}
+
+// SA CPad stores DisablePlayerControls as an unsigned short bitfield at 0x10E.
+inline bool GetDisablePlayerControls(void* pad) {
+	if (isSA())
+		return *((uint16*)((addr)pad + 0x10E)) != 0;
+	return *((uint8*)((addr)pad + (isIII() ? 0xDF : 0xF0))) != 0;
+}
 #define GetHandlingFlags(veh) *((uint32*)((addr)veh->pHandling + (isIII() ? 0xC8 : 0xCC)))
-#define GetWheelsOnGround(veh) *((uint8*)((addr)veh + (isIII() ? 0x590 : 0x5C4))) // In CAutomobile
-#define GetMysteriousWheelRelatedThingBike(veh) *((uint8*)((addr)veh + 0x4DC)) // In CBike, VC
+// SA CAutomobile::m_nWheelsOnGround 0x961; SA CBike::m_nNumWheelsOnGround 0x805.
+#define GetWheelsOnGround(veh) *((uint8*)((addr)veh + (isSA() ? 0x961 : (isIII() ? 0x590 : 0x5C4)))) // In CAutomobile
+#define GetMysteriousWheelRelatedThingBike(veh) *((uint8*)((addr)veh + (isSA() ? 0x805 : 0x4DC))) // In CBike
 #define GetDoomAnglePtrLR(veh) (float*)((addr)veh + (isIII() ? 0x580 : 0x5B0)) // In CAutomobile
 #define GetDoomAnglePtrUD(veh) (float*)((addr)veh + (isIII() ? 0x584 : 0x5B4)) // In CAutomobile
 #define GetPedObjective(ped) *((uint32*)((addr)ped + (isIII() ? 0x164 : 0x160)))
 #define GetNearPlane() *(float*)((addr)RwCamera + 0x80)
 
-// Virtual func. in GTA
-#define GetHeightAboveRoad(veh, classToCast) (veh->IsCar() ? *((float*)((addr)veh + (isIII() ? 0x50C : 0x530))) : \
-															-1.0f * ((classToCast*)veh->GetColModel())->boundingBox.min.z)
+// Virtual func. in GTA. On SA the automobile height is CAutomobile::m_fFrontHeightAboveRoad
+// (0x898); boats/bikes fall back to the collision model bounding box so no
+// out-of-bounds read can happen for a non-CAutomobile vehicle.
+#define GetHeightAboveRoad(veh, classToCast) (isSA() ? \
+	((veh->IsCar() || veh->IsHeliType() || veh->IsPlaneType()) ? *((float*)((addr)veh + 0x898)) : \
+		-1.0f * ((classToCast*)veh->GetColModel())->boundingBox.min.z) : \
+	(veh->IsCar() ? *((float*)((addr)veh + (isIII() ? 0x50C : 0x530))) : \
+		-1.0f * ((classToCast*)veh->GetColModel())->boundingBox.min.z))
+
+// Per-game vehicle type classification used by the SA engine, so the shared
+// algorithm does not have to know the handling-flag offsets of each game.
+inline bool CVehicleIII::IsHeliType(void) { return (GetHandlingFlags(this) & 0x20000) != 0; }
+inline bool CVehicleIII::IsPlaneType(void) { return (isIII() && m_modelIndex == MI_III_DODO) || (GetHandlingFlags(this) & 0x40000) != 0; }
+inline bool CVehicleIII::IsBikeType(void) { return (GetHandlingFlags(this) & 0x10000) != 0 || IsBike(); }
+inline bool CVehicleVC::IsHeliType(void) { return (GetHandlingFlags(this) & 0x20000) != 0; }
+inline bool CVehicleVC::IsPlaneType(void) { return (GetHandlingFlags(this) & 0x40000) != 0; }
+inline bool CVehicleVC::IsBikeType(void) { return (GetHandlingFlags(this) & 0x10000) != 0 || IsBike(); }
 
 // ---------------------------------------------------------------------------
 // Shared maths helpers
@@ -353,7 +387,9 @@ inline float GetATanOfXY(float x, float y) {
 }
 
 inline float GetAspectRatio() {
-	if (isVC())
+	if (isSA())
+		return *(float*)0xC3EFA4; // CDraw::ms_fAspectRatio (SA 1.0 US)
+	else if (isVC())
 		return *(float*)0x94DD38; // CDraw::ms_fAspectRatio
 	else {
 		static float aspectRatio = 0.0f;
@@ -377,8 +413,14 @@ inline float GetMouseAccel(CCameraIII *camera) {
 	return camera->m_fMouseAccelHorzntl;
 }
 
+inline float GetMouseAccel(CCameraSA *camera) {
+	UNREFERENCED_PARAMETER(camera);
+	return *(float*)0xB6EC1C; // CCamera::m_fMouseAccelHorzntl (SA 1.0 US)
+}
+
 inline bool IsVehicleSuspensionHigh(CCameraVC* camera) { return camera->m_bVehicleSuspenHigh; }
 inline bool IsVehicleSuspensionHigh(CCameraIII*) { return false; }
+inline bool IsVehicleSuspensionHigh(CCameraSA* camera) { return camera->m_bVehicleSuspenHigh; }
 
 // The engine step buffer; defined in ModernCarCam.cpp.
 void WellBufferMe(float Target, float* CurrentValue, float* CurrentSpeed, float MaxSpeed, float Acceleration, bool IsAngle);

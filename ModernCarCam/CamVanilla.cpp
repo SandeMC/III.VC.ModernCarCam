@@ -481,6 +481,51 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		}
 	}
 
+	// ---- Gamepad right-stick free-look ----
+	// The right stick drives the same free-look as the mouse. GetCarGun(LR/UD)
+	// is the unprocessed right stick (the same value the SA camera reads), so
+	// this works with both the classic controls and GInput.
+	if (mouseFreeLook && !GetDisablePlayerControls(pad) && nextDirectionIsForward) {
+		float stickX = -(float)pad->GetCarGunLeftRight();
+		float stickY = (float)pad->GetCarGunUpDown();
+
+		const bool ginputHasPad = ginputPad->HasPadInHands();
+		if (ginputLoaded == 2 ? !ginputHasPad : m_bUseMouse3rdPerson)
+			stickY = 0.0f;
+		else {
+			if (ginputHasPad && padSettings.InvertLook)
+				stickY = -stickY;
+			if (vc && *(bool*)0xA10AF7)
+				stickY = -stickY;
+		}
+
+		// Exponential smoothing so the gamepad camera does not feel rough.
+		static float smoothedStickX = 0.0f;
+		static float smoothedStickY = 0.0f;
+		float stickSmoothing = min(1.0f, ms_fTimeStep * 0.25f);
+		smoothedStickX += (stickX - smoothedStickX) * stickSmoothing;
+		smoothedStickY += (stickY - smoothedStickY) * stickSmoothing;
+		stickX = smoothedStickX;
+		stickY = smoothedStickY;
+
+		if (fabsf(stickX) > 0.05f || fabsf(stickY) > 0.05f) {
+			float v113 = cam->FOV * 0.0125f;
+			float sensitivity = (index == 0) ? 0.8f : ((index == 1) ? 0.75f : 1.0f);
+			float xMovement = fabsf(stickX) * (v113 * 0.071428575f) * stickX * 0.007f * 0.007f;
+			float yMovement = fabsf(stickY) * (v113 * 0.042857144f) * stickY * 0.007f * 0.007f;
+			// Beta follows the stick horizontally; Alpha is raised by pushing the
+			// stick up (the mouse path uses the opposite Y sign, so it is negated).
+			mouseXMovement += xMovement * sensitivity;
+			// Inverted on purpose: in GTA III / Vice City pushing the right stick
+			// up looks up, which is the opposite sign to the mouse path.
+			mouseYMovement += yMovement * sensitivity;
+			cam->BetaSpeed = 0.0f;
+			cam->AlphaSpeed = 0.0f;
+			stepsLeftToChangeBetaByMouse = 50.0f;
+			mouseChangesBeta = true;
+		}
+	}
+
 	// ---- Basic string constraint (Cam_On_A_String_Unobscured) ----
 	// The string only constrains the distance to the target. The direction comes
 	// from Beta, which is derived from the current position unless the player is

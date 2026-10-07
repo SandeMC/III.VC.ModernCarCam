@@ -24,13 +24,21 @@ enum
 	III_STEAM,
 	VC_10,
 	VC_11,
-	VC_STEAM
+	VC_STEAM,
+	SA_10
 };
 
 extern int gtaversion;
 
+// San Andreas 1.0 US detection. The signature is the prologue of
+// CCam::Process_FollowCar_SA (sub esp, 68h / push esi / mov esi, ecx) at
+// 0x5245B0, which is also the address the mod hooks. Verified against
+// gta-sa.exe (14,383,616 bytes, SHA-256 F01A00CE...).
+#define SA_10_US_SIGNATURE_ADDR 0x5245B0
+#define SA_10_US_SIGNATURE      0x5668EC83
+
 template<typename T>
-inline T AddressByVersion(addr addressIII10, addr addressIII11, addr addressIIISteam, addr addressvc10, addr addressvc11, addr addressvcSteam)
+inline T AddressByVersion(addr addressIII10, addr addressIII11, addr addressIIISteam, addr addressvc10, addr addressvc11, addr addressvcSteam, addr addressSA10 = 0)
 {
 	if (gtaversion == -1) {
 		if (*(addr*)0x5C1E75 == 0xB85548EC) gtaversion = III_10;
@@ -39,6 +47,7 @@ inline T AddressByVersion(addr addressIII10, addr addressIII11, addr addressIIIS
 		else if (*(addr*)0x667BF5 == 0xB85548EC) gtaversion = VC_10;
 		else if (*(addr*)0x667C45 == 0xB85548EC) gtaversion = VC_11;
 		else if (*(addr*)0x666BA5 == 0xB85548EC) gtaversion = VC_STEAM;
+		else if (*(addr*)SA_10_US_SIGNATURE_ADDR == SA_10_US_SIGNATURE) gtaversion = SA_10;
 		else gtaversion = 0;
 	}
 	switch (gtaversion) {
@@ -54,6 +63,8 @@ inline T AddressByVersion(addr addressIII10, addr addressIII11, addr addressIIIS
 		return (T)addressvc11;
 	case VC_STEAM:
 		return (T)addressvcSteam;
+	case SA_10:
+		return (T)addressSA10;
 	default:
 		return (T)0;
 	}
@@ -75,6 +86,12 @@ inline bool
 isVC(void)
 {
 	return gtaversion >= VC_10 && gtaversion <= VC_STEAM;
+}
+
+inline bool
+isSA(void)
+{
+	return gtaversion == SA_10;
 }
 
 #define PTRFROMCALL(addr) (uint32_t)(*(uint32_t*)((uint32_t)addr+1) + (uint32_t)addr + 5)
