@@ -23,6 +23,10 @@ The camera is selected with a single `Profile` setting:
 | VCS          | Vice City Stories camera (includes the high-speed shake)           |
 | IV, V        | GTA IV / GTA V camera styles                                       |
 
+IV and V are approximations of those games' feel (smooth, momentum based, no
+steering wobble) applied on top of the modern camera; their exact distances and
+angles can be dialled in with the Custom profile.
+
 Game-Matched, III, VC and SA add only the free camera, free turret control and
 fixes on top of the original camera. Everything else (wobble, elastic string,
 dynamic FOV, shake, etc.) is off in those profiles and available as an override
@@ -32,7 +36,8 @@ in `[Features]` or through the Enhanced / modern profiles.
 
 - One profile for the whole camera, with optional per-feature overrides
 - Faithful GTA III and Vice City vehicle cameras, including the behind-boat
-  camera and the GTA III top-down camera
+  camera and the GTA III top-down camera (GTA III only: Vice City's own view
+  cycle deliberately skips its top-down mode)
 - Free mouse look, ported from the San Andreas camera
 - Free turret control (Rhino / Firetruck) and 360-degree drive-by aiming
 - Dynamic speed FOV, a faithful port of the Widescreen Fix's

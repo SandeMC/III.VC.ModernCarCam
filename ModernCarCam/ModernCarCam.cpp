@@ -27,9 +27,6 @@
 #define DefaultFOV 70.0f
 #define DefaultNearClip 0.9f
 
-// CarZoomIndicator value for the top-down view (CCamera::eCamZoom order).
-#define CAM_ZOOM_TOPDOWN 4
-
 HMODULE dllModule, hDummyHandle;
 int gtaversion = -1;
 
@@ -214,7 +211,11 @@ bool modernDriveBy = true;
 bool mouseFreeLook = true;
 bool heightIncreaseOnBike = true;
 bool fixTheBug = true;
+bool trafficCamShake = true;
 bool seeUnderwater = false;
+float cameraLateralOffset = 0.0f; // side offset of the camera (Custom)
+CVector cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f); // target offset, e.g. the IV driver seat
+float cameraDistanceScale = 1.0f; // distance multiplier for the modern cameras
 
 // Resolve the user-facing profile into the internal table selectors and the
 // default feature set. Only the free camera, free turret control and fixes are
@@ -256,7 +257,11 @@ void applyProfile(ModernProfile profile, bool vc) {
 	mouseFreeLook = true;
 	heightIncreaseOnBike = vc;
 	fixTheBug = true;
+	trafficCamShake = true;
 	seeUnderwater = false;
+	cameraLateralOffset = 0.0f;
+	cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
+	cameraDistanceScale = 1.0f;
 
 	switch (profile) {
 	case PROFILE_ENHANCED:
@@ -269,22 +274,44 @@ void applyProfile(ModernProfile profile, bool vc) {
 		break;
 	case PROFILE_VCS:
 		vcsCamShake = true;
-		cameraWobble = true;
+		cameraWobble = false;
+		pitchTilt = 0;
 		vehicleSpecificZoom = true;
 		heightIncreaseOnBike = true;
 		cameraAnchoring = 0;
 		dynamicSpeedFOV = true;
 		break;
 	case PROFILE_SA_CAM:
-	case PROFILE_IV:
-	case PROFILE_V:
-	case PROFILE_LCS_CAM:
-		// The modern cameras are velocity-following and use the speed FOV.
-		cameraWobble = true;
+		// San Andreas has no steering wobble and no VC-style slope tilt.
+		cameraWobble = false;
+		pitchTilt = 0;
 		vehicleSpecificZoom = true;
 		heightIncreaseOnBike = true;
 		cameraAnchoring = 0;
 		dynamicSpeedFOV = true;
+		break;
+	case PROFILE_LCS_CAM:
+		// Liberty City Stories has no steering wobble or slope tilt either.
+		cameraWobble = false;
+		pitchTilt = 0;
+		vehicleSpecificZoom = true;
+		heightIncreaseOnBike = true;
+		cameraAnchoring = 0;
+		dynamicSpeedFOV = true;
+		break;
+	case PROFILE_IV:
+	case PROFILE_V:
+		// IV/V have no steering wobble or VC-style slope tilt.
+		cameraWobble = false;
+		pitchTilt = 0;
+		vehicleSpecificZoom = true;
+		heightIncreaseOnBike = true;
+		cameraAnchoring = 0;
+		dynamicSpeedFOV = (profile == PROFILE_V);
+		// GTA IV orbits the driver's seat rather than the car centre.
+		if (profile == PROFILE_IV)
+			cameraDriverOffset = CVector(-0.35f, 0.45f, 0.45f); // left, forward, up
+		cameraDistanceScale = (profile == PROFILE_IV) ? 0.85f : 1.1f;
 		break;
 	default:
 		break;
@@ -307,6 +334,7 @@ float customAngleMid = 0.045f;
 float customAngleFar = 0.005f;
 float customMaxElevationAngle = 0.785398f;
 float customMinElevationAngle = 1.5533431f;
+float customLateralOffset = 0.0f;
 
 // -----
 
@@ -486,10 +514,10 @@ void LoadSettings()
 	if (dot) strcpy(dot, ".ini");
 
 	if (GetFileAttributesA(iniPath) == INVALID_FILE_ATTRIBUTES) {
-		if (GetFileAttributesA(".\\ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
-			strcpy(iniPath, ".\\ModernCarCam.ini");
-		} else if (GetFileAttributesA(".\\scripts\\ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
-			strcpy(iniPath, ".\\scripts\\ModernCarCam.ini");
+		if (GetFileAttributesA(".\\III.VC.ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
+			strcpy(iniPath, ".\\III.VC.ModernCarCam.ini");
+		} else if (GetFileAttributesA(".\\scripts\\III.VC.ModernCarCam.ini") != INVALID_FILE_ATTRIBUTES) {
+			strcpy(iniPath, ".\\scripts\\III.VC.ModernCarCam.ini");
 		}
 	}
 
@@ -518,6 +546,26 @@ void LoadSettings()
 	}
 
 	applyProfile(cameraProfile, isVC());
+
+	// Individual table overrides. They follow the main Profile unless set.
+	auto ParseTableProfile = [](const char* str, CameraProfileType def) -> CameraProfileType {
+		if (!str || !*str)
+			return def;
+		if (_stricmp(str, "SA") == 0 || _stricmp(str, "IV") == 0 || _stricmp(str, "V") == 0)
+			return PROFILE_SA;
+		if (_stricmp(str, "LCS") == 0 || _stricmp(str, "VCS") == 0)
+			return PROFILE_LCS;
+		if (_stricmp(str, "Custom") == 0)
+			return PROFILE_CUSTOM;
+		return PROFILE_VANILLA; // Game-Matched / III / VC / Original
+	};
+	char tableBuf[32] = { 0 };
+	GetPrivateProfileStringA("General", "DistanceProfile", "", tableBuf, sizeof(tableBuf), iniPath);
+	distanceProfile = ParseTableProfile(tableBuf, distanceProfile);
+	GetPrivateProfileStringA("General", "FOVProfile", "", tableBuf, sizeof(tableBuf), iniPath);
+	fovProfile = ParseTableProfile(tableBuf, fovProfile);
+	GetPrivateProfileStringA("General", "AnglesProfile", "", tableBuf, sizeof(tableBuf), iniPath);
+	anglesProfile = ParseTableProfile(tableBuf, anglesProfile);
 
 	// The profile already chose the defaults. These ini keys are optional
 	// overrides: omit a key to keep the profile's value.
@@ -554,6 +602,11 @@ void LoadSettings()
 	customAngleFar  = ReadFloat("Custom", "CustomAngleFar", 0.005f);
 	customMaxElevationAngle = ReadFloat("Custom", "CustomMaxElevationAngle", 0.785398f);
 	customMinElevationAngle = ReadFloat("Custom", "CustomMinElevationAngle", 1.5533431f);
+	customLateralOffset = ReadFloat("Custom", "CustomLateralOffset", 0.0f);
+
+	// The side offset is only used by the Custom profile.
+	if (cameraProfile == PROFILE_CUSTOM_CAM)
+		cameraLateralOffset = customLateralOffset;
 
 	for (int i = 0; i < 8; i++) {
 		CARCAM_SET_CUSTOM[i][1] = customDistOffset;
@@ -583,6 +636,7 @@ void LoadSettings()
 	OverrideBool("ModernDriveBy", modernDriveBy);
 	OverrideBool("MouseFreeLook", mouseFreeLook);
 	OverrideBool("FixCameraClip", fixTheBug);
+	OverrideBool("TrafficCamShake", trafficCamShake);
 	OverrideBool("BikesHeightIncrease", heightIncreaseOnBike);
 
 	// Inverted relative to the internal "see underwater" flag.
@@ -639,64 +693,6 @@ inline float LimitRadianAngle(float angle) {
 
 static bool IsVehicleSuspensionHigh(CCameraVC* camera) { return camera->m_bVehicleSuspenHigh; }
 static bool IsVehicleSuspensionHigh(CCameraIII*) { return false; }
-
-// ---------------------------------------------------------------------------
-// GTA III "top down" / classic vehicle camera (CCam::Process_TopDown).
-// GTA III offers this as part of its normal view cycle; Vice City does not, so
-// reproducing it here lets the mode work and be cycled to in both games.
-// ---------------------------------------------------------------------------
-template<class CamClass, class CameraClass, class VehicleClass, class WorldClass>
-void
-Process_TopDown_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, const CVector& CameraTarget, float TargetOrientation)
-{
-	static float AdjustHeightTargetMoveBuffer = 0.0f;
-	static float AdjustHeightTargetMoveSpeed = 0.0f;
-
-	cam->FOV = DefaultFOV;
-	if (!car->IsVehicle())
-		return;
-
-	CVector Target, TestSource, TestTarget;
-	CColPoint colPoint;
-	CEntity* entity = nil;
-	float HeightTarget = 0.0f;
-
-	if (cam->ResetStatics) {
-		AdjustHeightTargetMoveBuffer = 0.0f;
-		AdjustHeightTargetMoveSpeed = 0.0f;
-	}
-
-	const float f = powf(0.8f, 4.0f);
-	Target = f * CameraTarget + (1.0f - f) * CameraTarget;
-	cam->Source = Target + CVector(0.0f, 0.0f, 30.0f * 0.8f);
-
-	TestSource = cam->Source;
-	TestTarget = TestSource;
-	TestTarget.z = Target.z;
-	if (WorldClass::ProcessLineOfSight(TestTarget, TestSource, colPoint, entity, true, false, false, false, false, false, false)) {
-		if (cam->Source.z < colPoint.point.z + 3.0f)
-			HeightTarget = colPoint.point.z + 3.0f - cam->Source.z;
-	} else {
-		TestSource = cam->Source;
-		TestTarget = TestSource;
-		TestTarget.z += 10.0f;
-		if (WorldClass::ProcessLineOfSight(TestTarget, TestSource, colPoint, entity, true, false, false, false, false, false, false))
-			if (cam->Source.z < colPoint.point.z + 3.0f)
-				HeightTarget = colPoint.point.z + 3.0f - cam->Source.z;
-	}
-	WellBufferMe(HeightTarget, &AdjustHeightTargetMoveBuffer, &AdjustHeightTargetMoveSpeed, 0.2f, 0.02f, false);
-	cam->Source.z += AdjustHeightTargetMoveBuffer;
-
-	RwCameraSetNearClipPlane(RwCamera, 1.5f);
-
-	cam->Front = CVector(-0.01f, -0.01f, -1.0f);
-	cam->Front.Normalise();
-	const float Dist = (cam->Source - CameraTarget).Magnitude();
-	cam->m_cvecTargetCoorsForFudgeInter = Dist * cam->Front + cam->Source;
-	cam->Up = CVector(0.0f, 1.0f, 0.0f);
-
-	cam->ResetStatics = false;
-}
 
 // ---------------------------------------------------------------------------
 // Vanilla "behind boat" camera (CCam::Process_BehindBoat).
@@ -1446,7 +1442,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	{
 		const float maxDiffBeta = DEGTORAD(160.0f);
 		float forwardSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
-		bool movingForward = forwardSpeed > 0.02f;
+		bool movingForward = fabsf(forwardSpeed) > 0.02f;
 
 		if (fabsf(LimitRadianAngle(TargetOrientation - cam->Beta)) > PI - maxDiffBeta && movingForward && TheCamera->m_uiTransitionState == 0)
 			cam->m_bFixingBeta = true;
@@ -1487,25 +1483,9 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		pIgnoreEntity = nil;
 	}
 
-	// ---- Raise the camera when another vehicle obscures the view ----
-	{
-		CColPoint colPoint;
-		CEntity* entity = nil;
-		float heightTarget = 0.0f;
-		pIgnoreEntity = (CEntity*)car;
-		if (WorldClass::ProcessLineOfSight(TargetCoors, cam->Source, colPoint, entity, false, true, false, false, false, false, false)) {
-			if (entity) {
-				CBaseModelInfo* mi = CModelInfo::GetModelInfo(entity->GetModelIndex());
-				if (mi)
-					heightTarget = ((ColModelClass*)mi->GetColModel())->boundingBox.max.z + 1.0f + TargetCoors.z - cam->Source.z;
-			}
-			if (heightTarget < 0.0f)
-				heightTarget = 0.0f;
-		}
-		pIgnoreEntity = nil;
-		WellBufferMe(heightTarget, &HeightFixerCarsObscuring, &HeightFixerCarsObscuringSpeed, 0.2f, 0.025f, false);
-		cam->Source.z += HeightFixerCarsObscuring;
-	}
+	// A vehicle crossing the view used to push the camera up here, which read as
+	// the camera randomly jumping upwards in traffic. That lift is not wanted,
+	// so it is intentionally not applied.
 
 	// ---- Keep a little clearance above the ground and pull the near plane in ----
 	// Without this, resting the camera on the ground lets the near clip plane
@@ -1542,6 +1522,17 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
 			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
 			cam->Source.z += (((r >> 8) & 0xF) - 7) * shakeFactor;
+		}
+	}
+
+	// ---- Slight shake when passing traffic very closely ----
+	if (trafficCamShake) {
+		if (WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false)) {
+			const float amp = 0.006f;
+			int r = rand();
+			cam->Source.x += ((r & 7) - 3) * amp;
+			cam->Source.y += (((r >> 3) & 7) - 3) * amp;
+			cam->Source.z += (((r >> 6) & 7) - 3) * amp;
 		}
 	}
 
@@ -1690,19 +1681,6 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 
 	VehicleClass* car = (VehicleClass*)cam->CamTargetEntity;
 
-	// GTA III's top-down / classic view is available in every profile, so the
-	// game's own view cycle keeps its top-down option. In Vice City the mode is
-	// redirected to the car camera (see DllMain); the top-down zoom sets
-	// CarZoomValue to 1.0, which is what identifies it here.
-	bool isTopDown = (cam->Mode == MODE_TOPDOWN1 || cam->Mode == MODE_TOPDOWN2);
-	if (!isTopDown && isVC() && !isReLCS)
-		isTopDown = (TheCamera->CarZoomValue == 1.0f) || ((int)TheCamera->CarZoomIndicator == CAM_ZOOM_TOPDOWN);
-	if (isTopDown) {
-		Process_TopDown_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass>(
-			TheCamera, cam, car, CameraTarget, TargetOrientation);
-		return;
-	}
-
 	bool useAnchoring = (cameraAnchoring == 1) || (cameraAnchoring == 2 && (masterProfile == PROFILE_VANILLA || (distanceProfile == PROFILE_VANILLA && anglesProfile == PROFILE_VANILLA)));
 	if (useAnchoring) {
 		if (cam->Mode == MODE_BEHINDBOAT) {
@@ -1720,6 +1698,12 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 	}
 
 	CVector TargetCoors = CameraTarget;
+
+	// GTA IV (and other driver-centred cameras): shift the orbit target to the
+	// driver's seat instead of the car centre.
+	if (cameraDriverOffset.x != 0.0f || cameraDriverOffset.y != 0.0f || cameraDriverOffset.z != 0.0f)
+		TargetCoors += Multiply3x3(cameraDriverOffset, car->GetMatrix());
+
 	uint8 camSetArrPos = 0;
 
 	// For compatibility with III with Aircraft mod and VC
@@ -1901,6 +1885,8 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		float forwardSpeed = DotProduct(car->m_vecMoveSpeed, car->GetForward()) * 180.0f;
 		newDistance += clamp(forwardSpeed * (2.0f / 210.0f), -1.0f, 2.0f);
 	}
+
+	newDistance *= cameraDistanceScale;
 
 	if (distanceProfile == PROFILE_VANILLA || anglesProfile == PROFILE_VANILLA || distanceProfile == PROFILE_CUSTOM || anglesProfile == PROFILE_CUSTOM) {
 		float vehHeight = carCol->boundingBox.max.z - carCol->boundingBox.min.z;
@@ -2471,6 +2457,13 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 
 	cam->Source = TargetCoors - newDistance * cam->Front;
 
+	// GTA IV style side offset (over the shoulder).
+	if (cameraLateralOffset != 0.0f) {
+		CVector side = CrossProduct(car->GetForward(), CVector(0.0f, 0.0f, 1.0f));
+		side.Normalise();
+		cam->Source += side * cameraLateralOffset;
+	}
+
 	// VCS camera shake. Ported from ThirteenAG's WidescreenFixesPack
 	// (MIT licensed, see licenses/WidescreenFixesPack.txt).
 	if (vcsCamShake && (isCar || isBike)) {
@@ -2481,6 +2474,17 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
 			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
 			cam->Source.z += (((r >> 8) & 0xF) - 7) * shakeFactor;
+		}
+	}
+
+	// ---- Slight shake when passing traffic very closely ----
+	if (trafficCamShake) {
+		if (WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false)) {
+			const float amp = 0.006f;
+			int r = rand();
+			cam->Source.x += ((r & 7) - 3) * amp;
+			cam->Source.y += (((r >> 3) & 7) - 3) * amp;
+			cam->Source.z += (((r >> 6) & 7) - 3) * amp;
 		}
 	}
 
@@ -2934,16 +2938,6 @@ DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 
 			// Prevent game from overwriting cam->FOV to 70.0f every frame (allows dynamic FOV and custom base FOV)
 			Nop(0x47fb22, 10);
-
-			// Vice City's camera cycle offers a top-down view, but CCam::Process
-			// does nothing for it (the original Process_TopDown call was stripped).
-			// Redirect the mode to the car camera; the camera dispatch then runs
-			// the ported top-down camera instead.
-			if (!isReLCS &&
-				*(uint16*)0x470D23 == 0xC766 && *(uint8*)0x470D25 == 0x05 &&
-				*(uint32*)0x470D26 == 0x0070388A && *(uint16*)0x470D2A == 0x0001) {
-				Patch(0x470D2A, (uint16)18); // MODE_TOPDOWN -> MODE_CAM_ON_A_STRING
-			}
 			
 			if (modernDriveBy) {
 				InjectHook(0x5C9885, 0x5C9893, PATCH_JUMP);
