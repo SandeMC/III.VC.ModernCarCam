@@ -12,7 +12,8 @@
 // active and the game/profile is vanilla, control is handed to CamVanilla.cpp.
 //
 // The implementation follows the reversed SA/LCS camera and the re3/reVC
-// behaviour for the III/VC fallback. VCS shake and dynamic FOV are ported from
+// behaviour for the III/VC fallback (https://github.com/Hezkore/hez-gta-re3;
+// see licenses/re3.txt). VCS shake and dynamic FOV are ported from
 // ThirteenAG's WidescreenFixesPack (MIT licensed, see
 // licenses/WidescreenFixesPack.txt).
 // ---------------------------------------------------------------------------

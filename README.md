@@ -70,8 +70,14 @@ Open `ModernCarCam.sln` and build `Release` (Win32). The output is
 ## Credits & licenses
 
 - Original SACarCam by erorcun and the SACarCamWithModernDriveBy fork.
-- Authentic camera algorithms based on re3 / reVC.
+- Authentic camera algorithms based on the reversed GTA III / Vice City
+  sources of re3 / reVC, using the
+  [Hezkore/hez-gta-re3](https://github.com/Hezkore/hez-gta-re3) fork. re3 is
+  not released under a standard license; its terms (educational / documentation
+  / modding use, non-commercial, keep derivative work open source, give proper
+  credit) are reproduced in `licenses/re3.txt`.
 - VCS camera shake and dynamic speed FOV ported from
   [ThirteenAG's WidescreenFixesPack](https://github.com/ThirteenAG/WidescreenFixesPack),
   MIT licensed. See `licenses/WidescreenFixesPack.txt`.
-- This project is MIT licensed; see `LICENSE`.
+- This project is MIT licensed; see `LICENSE`. The third-party notices in
+  `licenses/` apply to the portions they describe.

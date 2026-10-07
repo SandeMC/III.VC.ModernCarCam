@@ -45,7 +45,7 @@ jobs:
           Copy-Item -LiteralPath 'Release\III.VC.ModernCarCam.asi' -Destination dist
           Copy-Item -LiteralPath 'III.VC.ModernCarCam.ini' -Destination dist
           Copy-Item -LiteralPath 'LICENSE' -Destination dist
-          Copy-Item -LiteralPath 'licenses\WidescreenFixesPack.txt' -Destination dist
+          Copy-Item -LiteralPath 'licenses' -Destination dist -Recurse
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

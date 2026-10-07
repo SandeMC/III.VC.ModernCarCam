@@ -1,0 +1,24 @@
+The authentic GTA III and Vice City vehicle camera algorithms in this project
+are based on / derived from the reversed source code of re3 (GTA III) and reVC
+(Vice City). This project was built using the fork at:
+
+  https://github.com/Hezkore/hez-gta-re3
+
+re3 / reVC were started as a reverse-engineering effort by aap and many
+contributors (Fire_Head, shfil, erorcun, Nick007J, Serge and others); the
+original upstream repository is no longer available.
+
+re3 / reVC are not released under a standard software license. The notice from
+the re3 README is reproduced verbatim below. This project is an open source,
+non-commercial mod, and the notice applies to the re3-derived portions of it.
+
+--------------------------------------------------------------------------------
+License
+
+We don't feel like we're in a position to give this code a license.
+The code should only be used for educational, documentation and modding purposes.
+We do not encourage piracy or commercial use.
+Please keep derivate work open source and give proper credit.
+--------------------------------------------------------------------------------
+
+Source of the notice: https://github.com/Hezkore/hez-gta-re3 (README.md).

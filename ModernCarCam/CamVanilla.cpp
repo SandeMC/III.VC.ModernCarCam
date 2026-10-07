@@ -10,7 +10,8 @@
 //   Process_Cam_On_A_String_Vanilla  the vehicle "camera on a string" cam
 //
 // The implementations follow the reversed sources of re3 (GTA III) and reVC
-// (Vice City). GTA III and Vice City implement Process_Cam_On_A_String
+// (Vice City), using the https://github.com/Hezkore/hez-gta-re3 fork; see
+// licenses/re3.txt. GTA III and Vice City implement Process_Cam_On_A_String
 // differently, so the two algorithms are kept separate. The mod's ini-driven
 // features are layered on top of the authentic behaviour.
 // ---------------------------------------------------------------------------

@@ -40,6 +40,9 @@
 //   (CameraClass* TheCamera, CamClass* cam, VehicleClass* car,
 //    const CVector& CameraTarget, float TargetOrientation)
 //
+// The authentic camera algorithms are based on the reversed GTA III / Vice City
+// sources of re3 / reVC (https://github.com/Hezkore/hez-gta-re3); see
+// licenses/re3.txt for the attribution and terms.
 // ---------------------------------------------------------------------------
 
 #include "common.h"

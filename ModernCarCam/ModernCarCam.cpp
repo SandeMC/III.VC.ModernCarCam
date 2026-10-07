@@ -26,7 +26,8 @@
 //   CamVanilla.cpp  authentic III/VC "on a string" and behind-boat cameras
 //   CamSA.cpp       San Andreas follow-camera engine
 //
-// The authentic camera is based on the reversed sources of re3 / reVC.
+// The authentic camera is based on the reversed sources of re3 / reVC
+// (https://github.com/Hezkore/hez-gta-re3); see licenses/re3.txt.
 // The VCS camera shake is ported from ThirteenAG's WidescreenFixesPack
 // (MIT licensed, see licenses/WidescreenFixesPack.txt).
 // ---------------------------------------------------------------------------
