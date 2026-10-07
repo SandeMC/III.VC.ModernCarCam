@@ -216,6 +216,8 @@ bool seeUnderwater = false;
 float cameraLateralOffset = 0.0f; // side offset of the camera (Custom)
 CVector cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f); // target offset, e.g. the IV driver seat
 float cameraDistanceScale = 1.0f; // distance multiplier for the modern cameras
+bool enhancedVC = false; // Enhanced uses Vice City's features + camera angles even in GTA III
+float cameraHeight = 0.0f; // extra height in metres added to the camera target (Custom profile)
 
 // Resolve the user-facing profile into the internal table selectors and the
 // default feature set. Only the free camera, free turret control and fixes are
@@ -257,11 +259,13 @@ void applyProfile(ModernProfile profile, bool vc) {
 	heightIncreaseOnBike = vc;
 	fixTheBug = true;
 	trafficCamWobble = true;
-	reverseCam = true;
+	reverseCam = false;             // quality-of-life: Enhanced only, or forced in the ini
 	seeUnderwater = false;
 	cameraLateralOffset = 0.0f;
 	cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
 	cameraDistanceScale = 1.0f;
+	enhancedVC = false;
+	cameraHeight = 0.0f;
 
 	switch (profile) {
 	case PROFILE_ENHANCED:
@@ -271,6 +275,19 @@ void applyProfile(ModernProfile profile, bool vc) {
 		dynamicSpeedFOV = true;
 		pitchTilt = 3;
 		vcsCamShake = true;
+		if (profile == PROFILE_ENHANCED) {
+			// Enhanced is the Vice City camera with the modern extras: adopt the
+			// Vice City feature flags, camera angles, anchor and stiffness even in
+			// GTA III, while the III-only engine behaviour (roof/ground height,
+			// top-down camera, reversed turret) is left as-is.
+			cameraWobble = true;
+			vehicleSpecificZoom = true;
+			heightIncreaseOnBike = true;
+			cameraAnchoring = 1;      // authentic III/VC rigid anchor
+			cameraStiffness = 1.0f;   // authentic vanilla stiffness
+			reverseCam = true;
+			enhancedVC = true;
+		}
 		break;
 	case PROFILE_VCS:
 		vcsCamShake = true;
@@ -308,8 +325,10 @@ void applyProfile(ModernProfile profile, bool vc) {
 		cameraAnchoring = 0;
 		dynamicSpeedFOV = false;
 		// GTA IV keeps the driver's seat centred on screen, so the orbit target
-		// is the driver's seat (left, forward, up from the car centre).
-		cameraDriverOffset = CVector(-0.32f, 0.20f, 0.55f);
+		// is the driver's seat (left, forward, up from the car centre). The height
+		// was lowered because the IV profile sat too high in GTA III; fine-tune
+		// with [Features] CameraHeight.
+		cameraDriverOffset = CVector(-0.32f, 0.20f, 0.30f);
 		cameraDistanceScale = 0.85f;
 		break;
 	default:
@@ -323,6 +342,7 @@ float customDistMid = 1.9f;
 float customDistFar = 3.9f;
 float customDistOffset = 0.0f;
 float customMinDistance = 10.0f;
+float customCameraHeight = 0.0f;
 
 float customBaseFOV = 70.0f;
 float customDynamicFOVMax = 30.0f;
@@ -521,8 +541,10 @@ void LoadSettings()
 	}
 
 	char profile[32] = { 0 };
-	GetPrivateProfileStringA("General", "Profile", "Game-Matched", profile, sizeof(profile), iniPath);
-	if (_stricmp(profile, "III") == 0) {
+	GetPrivateProfileStringA("General", "Profile", "Game", profile, sizeof(profile), iniPath);
+	if (_stricmp(profile, "Game") == 0 || _stricmp(profile, "Game-Matched") == 0) {
+		cameraProfile = PROFILE_GAME_MATCHED;
+	} else if (_stricmp(profile, "III") == 0) {
 		cameraProfile = PROFILE_III;
 	} else if (_stricmp(profile, "VC") == 0 || _stricmp(profile, "Vice City") == 0) {
 		cameraProfile = PROFILE_VC;
@@ -589,6 +611,7 @@ void LoadSettings()
 	customDistFar  = ReadFloat("Custom", "CustomDistanceFar", 3.9f);
 	customDistOffset = ReadFloat("Custom", "CustomDistanceOffset", 0.0f);
 	customMinDistance = ReadFloat("Custom", "CustomMinDistance", 10.0f);
+	customCameraHeight = ReadFloat("Custom", "CustomCameraHeight", 0.0f);
 
 	customBaseFOV = ReadFloat("Custom", "CustomBaseFOV", 70.0f);
 	customDynamicFOVMax = ReadFloat("Custom", "CustomMaxDynamicFOV", 30.0f);
@@ -601,9 +624,11 @@ void LoadSettings()
 	customMinElevationAngle = ReadFloat("Custom", "CustomMinElevationAngle", 1.5533431f);
 	customLateralOffset = ReadFloat("Custom", "CustomLateralOffset", 0.0f);
 
-	// The side offset is only used by the Custom profile.
-	if (cameraProfile == PROFILE_CUSTOM_CAM)
+	// These offsets are only used by the Custom profile.
+	if (cameraProfile == PROFILE_CUSTOM_CAM) {
 		cameraLateralOffset = customLateralOffset;
+		cameraHeight = customCameraHeight;
+	}
 
 	for (int i = 0; i < 8; i++) {
 		CARCAM_SET_CUSTOM[i][1] = customDistOffset;
@@ -647,7 +672,7 @@ void onMasterProfileChange(void) {
 	applyProfile(cameraProfile, isVC());
 }
 
-const char *profileNames[] = { "Game-Matched", "III", "VC", "SA", "Enhanced", "LCS", "VCS", "IV", "Custom" };
+const char *profileNames[] = { "Game", "III", "VC", "SA", "Enhanced", "LCS", "VCS", "IV", "Custom" };
 const char *anchoringNames[] = { "Disabled (SA float)", "Enabled (Rigid anchor)", "Match profile" };
 const char *pitchTiltNames[] = { "Disabled (Flat/III)", "Authentic VC (Downhill)", "Match game (Auto)", "Full symmetric" };
 
@@ -1007,6 +1032,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 
 	// ---- Target position and base distance ----
 	CVector TargetCoors = CameraTarget;
+	TargetCoors.z += cameraHeight;
 	float BaseDist = vc ? Dimensions.Magnitude() : Dimensions.Magnitude2D();
 	if (vc && isBike)
 		BaseDist *= 1.45f;
@@ -1197,7 +1223,10 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	// ---- Alpha offset: the vertical angle for each zoom level ----
 	{
 		const int zoomIndicator = (int)TheCamera->CarZoomIndicator;
-		if (vc) {
+		// The Enhanced profile uses Vice City's per-zoom vertical angles even in
+		// GTA III (enhancedVC), while the III-only height/collision pass below
+		// still runs.
+		if (vc || enhancedVC) {
 			const float* off1 = ZmOneAlphaOffsetVC;
 			const float* off2 = ZmTwoAlphaOffsetVC;
 			const float* off3 = ZmThreeAlphaOffsetVC;
@@ -1436,18 +1465,48 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		cam->Source.z = TargetCoors.z + sinf(elevation) * distance;
 	}
 
+	// ---- Reverse look-behind state ----
+	// Owns Beta while engaged so the "rotate behind car" auto-fix below cannot
+	// fight it; that fight is why the camera never reached 180 degrees and wobbled.
+	static float reverseTime = 0.0f;
+	static bool reverseLookActive = false;
+	static float reverseBetaSpeed = 0.0f;
+	const float reverseSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
+	if (reverseSpeed < -0.05f)
+		reverseTime += ms_fTimeStep;
+	else
+		reverseTime = 0.0f;
+
+	if (!nextDirectionIsForward) {
+		// Player took over (look left/right/behind): abort the auto swing.
+		reverseTime = 0.0f;
+		reverseLookActive = false;
+	}
+	else if (!reverseCam) {
+		reverseLookActive = false;
+	}
+	else if (reverseTime > 1.0f) {
+		reverseLookActive = true;
+	}
+	else if (reverseLookActive && reverseSpeed > 0.05f) {
+		reverseLookActive = false; // driving forward again: hand back to the follow camera
+	}
+
+	if (!reverseLookActive)
+		reverseBetaSpeed = 0.0f;
+
 	// ---- Rotate the camera behind the car when driving forward ----
 	{
 		const float maxDiffBeta = DEGTORAD(160.0f);
-		float forwardSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
-		bool movingForward = fabsf(forwardSpeed) > 0.02f;
+		float forwardSpeed = reverseSpeed;
+		bool movingForward = forwardSpeed > 0.02f; // signed, as re3: reversing must not trigger this
 
 		if (fabsf(LimitRadianAngle(TargetOrientation - cam->Beta)) > PI - maxDiffBeta && movingForward && TheCamera->m_uiTransitionState == 0)
 			cam->m_bFixingBeta = true;
 
 		bool setBeta = TheCamera->m_bCamDirectlyBehind || TheCamera->m_bCamDirectlyInFront || TheCamera->m_bUseTransitionBeta;
 
-		if ((cam->m_bFixingBeta || setBeta) && !mouseChangesBeta) {
+		if ((cam->m_bFixingBeta || setBeta) && !mouseChangesBeta && !reverseLookActive) {
 			float stiffness = (cameraStiffness >= 0.0f) ? cameraStiffness : 1.0f;
 			WellBufferMe(TargetOrientation, &cam->Beta, &cam->BetaSpeed, 0.15f * stiffness, 0.007f * stiffness, true);
 
@@ -1471,23 +1530,15 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	TheCamera->m_bCamDirectlyBehind = false;
 	TheCamera->m_bCamDirectlyInFront = false;
 
-	// ---- Reverse: after a moment, smoothly swing round to look behind ----
-	{
-		static float reverseTime = 0.0f;
-		const float reverseSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
-		if (reverseSpeed < -0.05f)
-			reverseTime += ms_fTimeStep;
-		else
-			reverseTime = 0.0f;
-
-		if (reverseCam && reverseTime > 1.0f && !mouseChangesBeta) {
-			WellBufferMe(TargetOrientation + PI, &cam->Beta, &cam->BetaSpeed, 0.2f, 0.04f, true);
-			float d2 = (cam->Source - TargetCoors).Magnitude2D();
-			if (d2 < 0.1f)
-				d2 = cam->CA_MAX_DISTANCE;
-			cam->Source.x = TargetCoors.x - cosf(cam->Beta) * d2;
-			cam->Source.y = TargetCoors.y - sinf(cam->Beta) * d2;
-		}
+	// ---- Reverse: smoothly swing round to look behind, and lock there ----
+	if (reverseLookActive && !mouseChangesBeta) {
+		cam->BetaSpeed = 0.0f;
+		WellBufferMe(TargetOrientation + PI, &cam->Beta, &reverseBetaSpeed, 0.10f, 0.02f, true);
+		float d2 = (cam->Source - TargetCoors).Magnitude2D();
+		if (d2 < 0.1f)
+			d2 = cam->CA_MAX_DISTANCE;
+		cam->Source.x = TargetCoors.x - cosf(cam->Beta) * d2;
+		cam->Source.y = TargetCoors.y - sinf(cam->Beta) * d2;
 	}
 
 	// ---- Keep the camera out of geometry ----
@@ -1733,6 +1784,7 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 	}
 
 	CVector TargetCoors = adjustedTarget;
+	TargetCoors.z += cameraHeight;
 
 	uint8 camSetArrPos = 0;
 
@@ -2051,6 +2103,11 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		if (cam->DirectionWasLooking != LOOKING_FORWARD)
 			TheCamera->m_bCamDirectlyBehind = true;
 
+	// Reverse look-behind state (driven further below); reset on (re)entry.
+	static float reverseTime = 0.0f;
+	static int reverseState = 0;
+	static float reverseBetaSpeed = 0.0f;
+
 	// Called when we just entered the car, just started to look behind or returned back from looking left, right or behind
 	if (cam->ResetStatics || TheCamera->m_bCamDirectlyBehind || TheCamera->m_bCamDirectlyInFront) {
 		cam->ResetStatics = false;
@@ -2074,6 +2131,9 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		cam->AlphaSpeed = 0.0;
 		cam->Distance = newDistance;
 		cam->DistanceSpeed = 0.0;
+		reverseTime = 0.0f;
+		reverseState = 0;
+		reverseBetaSpeed = 0.0f;
 		// Do not snap camPitchTilt to the raw slope target here: this branch also
 		// runs when returning from look-left/right/behind, and the instant jump
 		// was what read as the camera suddenly slamming to the top. The buffer
@@ -2092,6 +2152,33 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		if (isIII() || !TheCamera->m_bJustCameOutOfGarage) // && !sthForScript)
 			cam->Alpha = -zoomModeAlphaOffset - camPitchTilt;
 	}
+
+	// ---- Reverse look-behind state (drives Beta below) ----
+	// This owns cam->Beta while active so the normal follow logic does not also
+	// integrate Beta every frame; that double update was the wobble that stopped
+	// the camera from settling behind the car. Declared above, reset on (re)entry.
+	const float reverseSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
+	if (reverseSpeed < -0.05f)
+		reverseTime += ms_fTimeStep;
+	else
+		reverseTime = 0.0f;
+
+	if (!nextDirectionIsForward) {
+		// Player took over (look left/right/behind): abort the auto swing.
+		reverseTime = 0.0f;
+		reverseState = 0;
+		reverseBetaSpeed = 0.0f;
+	}
+
+	if (reverseState != 0 && !reverseCam)
+		reverseState = 0;
+	else if (reverseCam && reverseTime > 1.0f)
+		reverseState = 1;
+	else if (reverseState == 1 && reverseSpeed > 0.05f)
+		reverseState = 2;
+
+	if (reverseState == 0)
+		reverseBetaSpeed = 0.0f;
 
 	cam->Front = TargetCoors - m_aTargetHistoryPosOne;
 	cam->Front.Normalise();
@@ -2335,16 +2422,18 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		targetBetaWithStickBlendAmount = v117;
 
 	float angleChangeStepLeft = 1.0 - angleChangeStep;
-	cam->BetaSpeed = targetBetaWithStickBlendAmount * angleChangeStepLeft + angleChangeStep * cam->BetaSpeed;
-	if (fabsf(cam->BetaSpeed) < 0.0001f)
-		cam->BetaSpeed = 0.0;
+	if (reverseState == 0) {
+		cam->BetaSpeed = targetBetaWithStickBlendAmount * angleChangeStepLeft + angleChangeStep * cam->BetaSpeed;
+		if (fabsf(cam->BetaSpeed) < 0.0001f)
+			cam->BetaSpeed = 0.0f;
 
-	float v121;
-	if (mouseChangesBeta)
-		v121 = betaSpeedFromStickX;
-	else
-		v121 = ms_fTimeStep * cam->BetaSpeed;
-	cam->Beta = v121 + cam->Beta;
+		float v121;
+		if (mouseChangesBeta)
+			v121 = betaSpeedFromStickX;
+		else
+			v121 = ms_fTimeStep * cam->BetaSpeed;
+		cam->Beta = v121 + cam->Beta;
+	}
 	
 	// SA:
 	if (TheCamera->m_bJustCameOutOfGarage)
@@ -2432,43 +2521,20 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 
 	lastBeta = cam->Beta;
 
-	// ---- Reverse: after a moment, smoothly swing round to look behind, and
-	// swing back to the normal view as soon as you drive forward again ----
-	{
-		static float reverseTime = 0.0f;
-		static bool reverseLookActive = false;
-		const float reverseSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
-
-		if (reverseSpeed < -0.05f)
-			reverseTime += ms_fTimeStep;
-		else
-			reverseTime = 0.0f;
-
-		if (!nextDirectionIsForward) {
-			// Player took over (look left/right/behind): abort the auto swing.
-			reverseTime = 0.0f;
-			reverseLookActive = false;
-		}
-
-		if (reverseCam && reverseTime > 1.0f) {
-			// The SA path anchors "behind the car" at Heading() - HALFPI (see the
-			// ResetStatics branch), so the look-behind anchor is that plus PI.
-			float behind = car->GetForward().Heading() - HALFPI + PI;
-			while (behind < cam->Beta - PI) behind += TWOPI;
-			while (behind > cam->Beta + PI) behind -= TWOPI;
-			WellBufferMe(behind, &cam->Beta, &cam->BetaSpeed, 0.17f, 0.034f, true);
-			lastBeta = cam->Beta;
-			reverseLookActive = true;
-		}
-		else if (reverseLookActive && reverseSpeed > 0.05f) {
-			// Driving forward again: swing back behind the car.
-			float behind = car->GetForward().Heading() - HALFPI;
-			while (behind < cam->Beta - PI) behind += TWOPI;
-			while (behind > cam->Beta + PI) behind -= TWOPI;
-			WellBufferMe(behind, &cam->Beta, &cam->BetaSpeed, 0.17f, 0.034f, true);
-			lastBeta = cam->Beta;
-			if (fabsf(LimitRadianAngle(cam->Beta - behind)) < 0.03f)
-				reverseLookActive = false;
+	// ---- Reverse look-behind: drive Beta with its own state and speed so it
+	// settles smoothly behind the car instead of fighting the follow logic ----
+	if (reverseState != 0) {
+		float target = (reverseState == 1)
+			? car->GetForward().Heading() - HALFPI + PI // look behind the car
+			: car->GetForward().Heading() - HALFPI;     // back to behind the car
+		while (target < cam->Beta - PI) target += TWOPI;
+		while (target > cam->Beta + PI) target -= TWOPI;
+		cam->BetaSpeed = 0.0f;
+		WellBufferMe(target, &cam->Beta, &reverseBetaSpeed, 0.10f, 0.02f, true);
+		lastBeta = cam->Beta;
+		if (reverseState == 2 && fabsf(LimitRadianAngle(cam->Beta - target)) < 0.02f) {
+			reverseState = 0;
+			reverseBetaSpeed = 0.0f;
 		}
 	}
 

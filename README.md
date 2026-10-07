@@ -14,11 +14,11 @@ The camera is selected with a single `Profile` setting:
 
 | Profile      | Description                                                        |
 |--------------|--------------------------------------------------------------------|
-| Game-Matched | Whatever game is running (default)                                 |
+| Game         | Whatever game is running (default)                                 |
 | III          | The GTA III camera                                                 |
 | VC           | The Vice City camera                                               |
 | SA           | The San Andreas follow camera                                      |
-| Enhanced     | Game-Matched plus quality-of-life additions                        |
+| Enhanced     | Game plus quality-of-life additions (Vice City based)              |
 | LCS          | Liberty City Stories camera                                        |
 | VCS          | Vice City Stories camera (includes the high-speed shake)           |
 | IV           | GTA IV camera style (driver's seat centred)                        |
@@ -27,10 +27,18 @@ IV is an approximation of that game's feel (smooth, momentum based, no
 steering wobble) applied on top of the modern camera; its exact distances and
 angles can be dialled in with the Custom profile.
 
-Game-Matched, III, VC and SA add only the free camera, free turret control and
+Game, III, VC and SA add only the free camera, free turret control and
 fixes on top of the original camera. Everything else (wobble, elastic string,
 dynamic FOV, shake, etc.) is off in those profiles and available as an override
 in `[Features]` or through the Enhanced / modern profiles.
+
+Enhanced is based on the Vice City camera: it uses Vice City's feature set
+(steering roll, per-vehicle zoom, bike-with-passenger height), Vice City's
+per-zoom camera angles, and Vice City's camera anchor and stiffness, even when
+running GTA III. It also enables the elastic string, dynamic speed FOV, full
+terrain pitch tilt, VCS shake and the reverse look-behind camera. The III-only
+engine behaviour (roof/ground camera height, top-down camera, reversed turret)
+is kept.
 
 ## Features
 
@@ -45,6 +53,8 @@ in `[Features]` or through the Enhanced / modern profiles.
 - Vice City Stories camera shake (ported from ThirteenAG's WidescreenFixesPack)
 - Steering wobble, terrain pitch tilt, per-vehicle zoom, bike passenger height,
   elastic string stretch, camera clipping fixes and more
+- The Custom profile exposes camera distance and height offsets
+  (`CustomDistanceOffset`, `CustomCameraHeight`) to dial in those tables
 
 ## Widescreen Fix compatibility
 
