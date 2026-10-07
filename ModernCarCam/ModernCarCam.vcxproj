@@ -7,8 +7,12 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Pad.cpp" />
+    <ClCompile Include="CamSA.cpp" />
+    <ClCompile Include="CamVanilla.cpp" />
     <ClCompile Include="ModernCarCam.cpp" />
+    <ClCompile Include="Pad.cpp" />
+    <ClCompile Include="Profiles.cpp" />
+    <ClCompile Include="Settings.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Camera.h" />
@@ -16,6 +20,7 @@
     <ClInclude Include="GInputAPI.h" />
     <ClInclude Include="GTA.h" />
     <ClInclude Include="MemoryMgr.h" />
+    <ClInclude Include="ModernCarCam.h" />
     <ClInclude Include="ModuleList.hpp" />
     <ClInclude Include="Pad.h" />
   </ItemGroup>
@@ -51,7 +56,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <WarningLevel>Level3</WarningLevel>
+      <WarningLevel>Level4</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
