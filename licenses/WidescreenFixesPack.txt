@@ -1,4 +1,4 @@
-The VCS (Vice City Stories) camera shake implementation in this project is
+The VCS (Vice City Stories) camera shake implementation and Car Dependant / Dynamic FOV in this project is
 ported from ThirteenAG's WidescreenFixesPack, which is distributed under the
 MIT License reproduced below.
 
