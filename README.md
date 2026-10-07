@@ -21,10 +21,10 @@ The camera is selected with a single `Profile` setting:
 | Enhanced     | Game-Matched plus quality-of-life additions                        |
 | LCS          | Liberty City Stories camera                                        |
 | VCS          | Vice City Stories camera (includes the high-speed shake)           |
-| IV, V        | GTA IV / GTA V camera styles                                       |
+| IV           | GTA IV camera style (driver's seat centred)                        |
 
-IV and V are approximations of those games' feel (smooth, momentum based, no
-steering wobble) applied on top of the modern camera; their exact distances and
+IV is an approximation of that game's feel (smooth, momentum based, no
+steering wobble) applied on top of the modern camera; its exact distances and
 angles can be dialled in with the Custom profile.
 
 Game-Matched, III, VC and SA add only the free camera, free turret control and

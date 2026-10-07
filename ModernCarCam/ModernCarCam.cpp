@@ -176,7 +176,7 @@ enum CameraProfileType : int8_t {
 };
 
 // User-facing profiles. "Game-Matched" reproduces whatever game is running;
-// III/VC/SA/LCS/VCS/IV/V force a particular game's camera; "Enhanced" is the
+// III/VC/SA/LCS/VCS/IV force a particular game's camera; "Enhanced" is the
 // game-matched camera plus quality-of-life additions.
 enum ModernProfile : int8_t {
 	PROFILE_GAME_MATCHED = 0,
@@ -187,7 +187,6 @@ enum ModernProfile : int8_t {
 	PROFILE_LCS_CAM,
 	PROFILE_VCS,
 	PROFILE_IV,
-	PROFILE_V,
 	PROFILE_CUSTOM_CAM
 };
 
@@ -211,7 +210,8 @@ bool modernDriveBy = true;
 bool mouseFreeLook = true;
 bool heightIncreaseOnBike = true;
 bool fixTheBug = true;
-bool trafficCamShake = true;
+bool trafficCamWobble = true;
+bool reverseCam = true;
 bool seeUnderwater = false;
 float cameraLateralOffset = 0.0f; // side offset of the camera (Custom)
 CVector cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f); // target offset, e.g. the IV driver seat
@@ -224,7 +224,6 @@ void applyProfile(ModernProfile profile, bool vc) {
 	switch (profile) {
 	case PROFILE_SA_CAM:
 	case PROFILE_IV:
-	case PROFILE_V:
 		masterProfile = PROFILE_SA;
 		break;
 	case PROFILE_LCS_CAM:
@@ -257,7 +256,8 @@ void applyProfile(ModernProfile profile, bool vc) {
 	mouseFreeLook = true;
 	heightIncreaseOnBike = vc;
 	fixTheBug = true;
-	trafficCamShake = true;
+	trafficCamWobble = true;
+	reverseCam = true;
 	seeUnderwater = false;
 	cameraLateralOffset = 0.0f;
 	cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
@@ -300,18 +300,17 @@ void applyProfile(ModernProfile profile, bool vc) {
 		dynamicSpeedFOV = true;
 		break;
 	case PROFILE_IV:
-	case PROFILE_V:
-		// IV/V have no steering wobble or VC-style slope tilt.
+		// IV has no steering wobble or VC-style slope tilt.
 		cameraWobble = false;
 		pitchTilt = 0;
 		vehicleSpecificZoom = true;
 		heightIncreaseOnBike = true;
 		cameraAnchoring = 0;
-		dynamicSpeedFOV = (profile == PROFILE_V);
-		// GTA IV orbits the driver's seat rather than the car centre.
-		if (profile == PROFILE_IV)
-			cameraDriverOffset = CVector(-0.35f, 0.45f, 0.45f); // left, forward, up
-		cameraDistanceScale = (profile == PROFILE_IV) ? 0.85f : 1.1f;
+		dynamicSpeedFOV = false;
+		// GTA IV keeps the driver's seat centred on screen, so the orbit target
+		// is the driver's seat (left, forward, up from the car centre).
+		cameraDriverOffset = CVector(-0.32f, 0.20f, 0.55f);
+		cameraDistanceScale = 0.85f;
 		break;
 	default:
 		break;
@@ -537,8 +536,6 @@ void LoadSettings()
 		cameraProfile = PROFILE_VCS;
 	} else if (_stricmp(profile, "IV") == 0) {
 		cameraProfile = PROFILE_IV;
-	} else if (_stricmp(profile, "V") == 0 || _stricmp(profile, "GTAV") == 0) {
-		cameraProfile = PROFILE_V;
 	} else if (_stricmp(profile, "Custom") == 0) {
 		cameraProfile = PROFILE_CUSTOM_CAM;
 	} else {
@@ -551,7 +548,7 @@ void LoadSettings()
 	auto ParseTableProfile = [](const char* str, CameraProfileType def) -> CameraProfileType {
 		if (!str || !*str)
 			return def;
-		if (_stricmp(str, "SA") == 0 || _stricmp(str, "IV") == 0 || _stricmp(str, "V") == 0)
+		if (_stricmp(str, "SA") == 0 || _stricmp(str, "IV") == 0)
 			return PROFILE_SA;
 		if (_stricmp(str, "LCS") == 0 || _stricmp(str, "VCS") == 0)
 			return PROFILE_LCS;
@@ -636,7 +633,8 @@ void LoadSettings()
 	OverrideBool("ModernDriveBy", modernDriveBy);
 	OverrideBool("MouseFreeLook", mouseFreeLook);
 	OverrideBool("FixCameraClip", fixTheBug);
-	OverrideBool("TrafficCamShake", trafficCamShake);
+	OverrideBool("TrafficCamWobble", trafficCamWobble);
+	OverrideBool("ReverseCamera", reverseCam);
 	OverrideBool("BikesHeightIncrease", heightIncreaseOnBike);
 
 	// Inverted relative to the internal "see underwater" flag.
@@ -649,14 +647,14 @@ void onMasterProfileChange(void) {
 	applyProfile(cameraProfile, isVC());
 }
 
-const char *profileNames[] = { "Game-Matched", "III", "VC", "SA", "Enhanced", "LCS", "VCS", "IV", "V", "Custom" };
+const char *profileNames[] = { "Game-Matched", "III", "VC", "SA", "Enhanced", "LCS", "VCS", "IV", "Custom" };
 const char *anchoringNames[] = { "Disabled (SA float)", "Enabled (Rigid anchor)", "Match profile" };
 const char *pitchTiltNames[] = { "Disabled (Flat/III)", "Authentic VC (Downhill)", "Match game (Auto)", "Full symmetric" };
 
 void registerDebugMenu() {
 	if (!debugMenuLoaded) {
 		if (DebugMenuLoad()) {
-			DebugMenuAddInt8("ModernCarCam", "Camera profile", (int8_t*)&cameraProfile, onMasterProfileChange, 1, 0, 9, profileNames);
+			DebugMenuAddInt8("ModernCarCam", "Camera profile", (int8_t*)&cameraProfile, onMasterProfileChange, 1, 0, 8, profileNames);
 
 			DebugMenuAddVarBool8("ModernCarCam", "Camera wobble", (int8*)&cameraWobble, nil);
 			DebugMenuAddVarBool8("ModernCarCam", "Elastic string physics", (int8*)&elasticStringPhysics, nil);
@@ -1473,6 +1471,25 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	TheCamera->m_bCamDirectlyBehind = false;
 	TheCamera->m_bCamDirectlyInFront = false;
 
+	// ---- Reverse: after a moment, smoothly swing round to look behind ----
+	{
+		static float reverseTime = 0.0f;
+		const float reverseSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
+		if (reverseSpeed < -0.05f)
+			reverseTime += ms_fTimeStep;
+		else
+			reverseTime = 0.0f;
+
+		if (reverseCam && reverseTime > 1.0f && !mouseChangesBeta) {
+			WellBufferMe(TargetOrientation + PI, &cam->Beta, &cam->BetaSpeed, 0.2f, 0.04f, true);
+			float d2 = (cam->Source - TargetCoors).Magnitude2D();
+			if (d2 < 0.1f)
+				d2 = cam->CA_MAX_DISTANCE;
+			cam->Source.x = TargetCoors.x - cosf(cam->Beta) * d2;
+			cam->Source.y = TargetCoors.y - sinf(cam->Beta) * d2;
+		}
+	}
+
 	// ---- Keep the camera out of geometry ----
 	{
 		pIgnoreEntity = (CEntity*)car;
@@ -1525,14 +1542,15 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		}
 	}
 
-	// ---- Slight shake when passing traffic very closely ----
-	if (trafficCamShake) {
-		if (WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false)) {
-			const float amp = 0.006f;
-			int r = rand();
-			cam->Source.x += ((r & 7) - 3) * amp;
-			cam->Source.y += (((r >> 3) & 7) - 3) * amp;
-			cam->Source.z += (((r >> 6) & 7) - 3) * amp;
+	// ---- Slight camera tilt when passing traffic very closely ----
+	float trafficWobbleTarget = 0.0f;
+	if (trafficCamWobble) {
+		CEntity* nearEnt = WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false);
+		if (nearEnt) {
+			CVector side = CrossProduct(car->GetForward(), CVector(0.0f, 0.0f, 1.0f));
+			side.Normalise();
+			float lateral = DotProduct(nearEnt->GetPosition() - car->GetPosition(), side);
+			trafficWobbleTarget = clamp(lateral * 0.07f, -0.05f, 0.05f);
 		}
 	}
 
@@ -1569,6 +1587,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			targetRoll = steer * (fwdSpeed / 210.0f) *
 				(DEGTORAD(10.0f) * TiltOverShoot[index] + cam->f_max_role_angle) * sinf(angleDiff);
 		}
+		targetRoll += trafficWobbleTarget;
 		WellBufferMe(targetRoll, &cam->f_Roll, &cam->f_rollSpeed, 0.15f, 0.07f, false);
 		cam->GetVectorsReadyForRW();
 	}
@@ -1681,28 +1700,39 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 
 	VehicleClass* car = (VehicleClass*)cam->CamTargetEntity;
 
+	// GTA IV (and other driver-centred cameras): shift the orbit target to the
+	// driver's seat instead of the car centre. The offset is rotated by the car's
+	// heading only (yaw), not its full matrix: body roll and road pitch were
+	// rotating the "up"/"side" parts of the seat into the forward direction, so
+	// the target wandered and the camera settled back onto the car centre after
+	// a few turns. Yaw-only keeps the seat fixed relative to the car's heading.
+	CVector adjustedTarget = CameraTarget;
+	if (cameraDriverOffset.x != 0.0f || cameraDriverOffset.y != 0.0f || cameraDriverOffset.z != 0.0f) {
+		const float h = car->GetForward().Heading();
+		const CVector flatForward(-sinf(h), cosf(h), 0.0f);
+		const CVector flatRight(cosf(h), sinf(h), 0.0f);
+		adjustedTarget += flatRight * cameraDriverOffset.x
+			+ flatForward * cameraDriverOffset.y
+			+ CVector(0.0f, 0.0f, cameraDriverOffset.z);
+	}
+
 	bool useAnchoring = (cameraAnchoring == 1) || (cameraAnchoring == 2 && (masterProfile == PROFILE_VANILLA || (distanceProfile == PROFILE_VANILLA && anglesProfile == PROFILE_VANILLA)));
 	if (useAnchoring) {
 		if (cam->Mode == MODE_BEHINDBOAT) {
 			if (isVC())
 				Process_BehindBoat_VC<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(
-					TheCamera, cam, car, CameraTarget, TargetOrientation);
+					TheCamera, cam, car, adjustedTarget, TargetOrientation);
 			else
 				Process_BehindBoat_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass>(
-					TheCamera, cam, car, CameraTarget, TargetOrientation);
+					TheCamera, cam, car, adjustedTarget, TargetOrientation);
 		} else {
 			Process_Cam_On_A_String_Vanilla<CamClass, CameraClass, VehicleClass, WorldClass, ColModelClass>(
-				TheCamera, cam, car, CameraTarget, TargetOrientation);
+				TheCamera, cam, car, adjustedTarget, TargetOrientation);
 		}
 		return;
 	}
 
-	CVector TargetCoors = CameraTarget;
-
-	// GTA IV (and other driver-centred cameras): shift the orbit target to the
-	// driver's seat instead of the car centre.
-	if (cameraDriverOffset.x != 0.0f || cameraDriverOffset.y != 0.0f || cameraDriverOffset.z != 0.0f)
-		TargetCoors += Multiply3x3(cameraDriverOffset, car->GetMatrix());
+	CVector TargetCoors = adjustedTarget;
 
 	uint8 camSetArrPos = 0;
 
@@ -1933,27 +1963,23 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		float carAlpha = -forwardSlope * behindCarNess;
 
 		if (effectivePitchTilt == 1) {
-			// Authentic Vice City (reVC CCam::WorkOutCamHeight line 1695)
-			// Downhill descents elevate higher / angle steeper down; uphill slopes are clamped to 0
-			if (carAlpha < 0.0f)
-				carAlpha = 0.0f;
-			if (carAlpha > DEGTORAD(89.0f))
-				carAlpha = DEGTORAD(89.0f);
-			targetSlopeTilt = carAlpha;
+			// Vice City style: downhill elevates the camera, uphill is level.
+			// Same range as the vanilla engine.
+			targetSlopeTilt = clamp(carAlpha, 0.0f, 0.35f);
 		}
 		else if (effectivePitchTilt == 3) {
-			// Full symmetric tilt (tilts camera smoothly on both uphill and downhill slopes)
+			// Full symmetric tilt. Use the same range and buffer as the vanilla
+			// engine, otherwise the tilt creeps toward the slope far too slowly
+			// to be visible (and the old 0.035 top speed looked like it did
+			// nothing at all).
 			targetSlopeTilt = clamp(carAlpha, -0.35f, 0.35f);
 		}
 	}
 
-	if (effectivePitchTilt == 1) {
+	if (effectivePitchTilt == 1 || effectivePitchTilt == 3) {
 		float bufferTopSpeed = isBike ? 0.09f : 0.15f;
 		float bufferStep = isBike ? 0.04f : 0.07f;
 		WellBufferMe(targetSlopeTilt, &camPitchTilt, &camPitchTiltSpeed, bufferTopSpeed, bufferStep, true);
-	}
-	else if (effectivePitchTilt == 3) {
-		WellBufferMe(targetSlopeTilt, &camPitchTilt, &camPitchTiltSpeed, 0.035f, 0.016f, false);
 	}
 	else {
 		camPitchTilt = 0.0f;
@@ -2048,10 +2074,13 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		cam->AlphaSpeed = 0.0;
 		cam->Distance = newDistance;
 		cam->DistanceSpeed = 0.0;
-		camPitchTilt = targetSlopeTilt;
+		// Do not snap camPitchTilt to the raw slope target here: this branch also
+		// runs when returning from look-left/right/behind, and the instant jump
+		// was what read as the camera suddenly slamming to the top. The buffer
+		// above now tracks the slope smoothly instead.
 		camPitchTiltSpeed = 0.0f;
 
-		cam->Front.x = -(cos(cam->Beta) * cos(cam->Alpha));
+	cam->Front.x = -(cos(cam->Beta) * cos(cam->Alpha));
 		cam->Front.y = -(sin(cam->Beta) * cos(cam->Alpha));
 		cam->Front.z = sin(cam->Alpha);
 
@@ -2157,13 +2186,10 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 					}
 				}
 
-	float targetAlpha;
-	if (anglesProfile == PROFILE_VANILLA) {
-		targetAlpha = -zoomModeAlphaOffset - camPitchTilt;
-	}
-	else {
-		targetAlpha = asinf(clamp(cam->Front.z, -1.0f, 1.0f)) - zoomModeAlphaOffset - camPitchTilt;
-	}
+	// The camera's default pitch for every profile. Previously a non-vanilla
+	// angles profile fed the camera's own angle back in via asin(Front.z), which
+	// made the camera drift pitch endlessly.
+	float targetAlpha = -zoomModeAlphaOffset - camPitchTilt;
 	if (targetAlpha <= maxAlphaAllowed)
 	{
 		if (targetAlpha < -ANGLES_CARCAM_SET[camSetArrPos][14])
@@ -2406,9 +2432,61 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 
 	lastBeta = cam->Beta;
 
+	// ---- Reverse: after a moment, smoothly swing round to look behind, and
+	// swing back to the normal view as soon as you drive forward again ----
+	{
+		static float reverseTime = 0.0f;
+		static bool reverseLookActive = false;
+		const float reverseSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
+
+		if (reverseSpeed < -0.05f)
+			reverseTime += ms_fTimeStep;
+		else
+			reverseTime = 0.0f;
+
+		if (!nextDirectionIsForward) {
+			// Player took over (look left/right/behind): abort the auto swing.
+			reverseTime = 0.0f;
+			reverseLookActive = false;
+		}
+
+		if (reverseCam && reverseTime > 1.0f) {
+			// The SA path anchors "behind the car" at Heading() - HALFPI (see the
+			// ResetStatics branch), so the look-behind anchor is that plus PI.
+			float behind = car->GetForward().Heading() - HALFPI + PI;
+			while (behind < cam->Beta - PI) behind += TWOPI;
+			while (behind > cam->Beta + PI) behind -= TWOPI;
+			WellBufferMe(behind, &cam->Beta, &cam->BetaSpeed, 0.17f, 0.034f, true);
+			lastBeta = cam->Beta;
+			reverseLookActive = true;
+		}
+		else if (reverseLookActive && reverseSpeed > 0.05f) {
+			// Driving forward again: swing back behind the car.
+			float behind = car->GetForward().Heading() - HALFPI;
+			while (behind < cam->Beta - PI) behind += TWOPI;
+			while (behind > cam->Beta + PI) behind -= TWOPI;
+			WellBufferMe(behind, &cam->Beta, &cam->BetaSpeed, 0.17f, 0.034f, true);
+			lastBeta = cam->Beta;
+			if (fabsf(LimitRadianAngle(cam->Beta - behind)) < 0.03f)
+				reverseLookActive = false;
+		}
+	}
+
 	cam->Front.x = -(cos(cam->Beta) * cos(cam->Alpha));
 	cam->Front.y = -(sin(cam->Beta) * cos(cam->Alpha));
 	cam->Front.z = sin(cam->Alpha);
+
+	// Slight tilt when passing traffic very closely.
+	float trafficWobbleTarget = 0.0f;
+	if (trafficCamWobble) {
+		CEntity* nearEnt = WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false);
+		if (nearEnt) {
+			CVector side = CrossProduct(car->GetForward(), CVector(0.0f, 0.0f, 1.0f));
+			side.Normalise();
+			float lateral = DotProduct(nearEnt->GetPosition() - car->GetPosition(), side);
+			trafficWobbleTarget = clamp(lateral * 0.07f, -0.05f, 0.05f);
+		}
+	}
 
 	// Steering camera wobble (authentic GTA III & Vice City roll & inertia)
 	float targetRoll = 0.0f;
@@ -2435,6 +2513,7 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 		// Authentic vanilla attenuation using sin(AngleDiff)
 		targetRoll = steerFactor * (DEGTORAD(10.0f) * tiltOvershoot + maxRoll) * sinf(angleDiff);
 	}
+	targetRoll += trafficWobbleTarget;
 	WellBufferMe(targetRoll, &cam->f_Roll, &cam->f_rollSpeed, 0.15f, 0.07f, false);
 
 	cam->Distance = newDistance;
@@ -2474,17 +2553,6 @@ Process_FollowCar_SA(const CVector& CameraTarget, float TargetOrientation, CamCl
 			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
 			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
 			cam->Source.z += (((r >> 8) & 0xF) - 7) * shakeFactor;
-		}
-	}
-
-	// ---- Slight shake when passing traffic very closely ----
-	if (trafficCamShake) {
-		if (WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false)) {
-			const float amp = 0.006f;
-			int r = rand();
-			cam->Source.x += ((r & 7) - 3) * amp;
-			cam->Source.y += (((r >> 3) & 7) - 3) * amp;
-			cam->Source.z += (((r >> 6) & 7) - 3) * amp;
 		}
 	}
 
