@@ -1,0 +1,56 @@
+name: Build
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  SOLUTION: ModernCarCam.sln
+  CONFIGURATION: Release
+  PLATFORM: x86
+  # The project targets v142, which the hosted images no longer ship; build with
+  # the installed v143 toolset. This only overrides the toolset for this build,
+  # the project file is left untouched.
+  TOOLSET: v143
+
+jobs:
+  build:
+    name: Release x86
+    runs-on: windows-2022
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build
+        run: >
+          msbuild "$env:SOLUTION"
+          /p:Configuration=$env:CONFIGURATION
+          /p:Platform=$env:PLATFORM
+          /p:PlatformToolset=$env:TOOLSET
+          /t:Rebuild /m /v:minimal /nologo
+
+      - name: Stage artifact
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -LiteralPath 'Release\III.VC.ModernCarCam.asi' -Destination dist
+          Copy-Item -LiteralPath 'III.VC.ModernCarCam.ini' -Destination dist
+          Copy-Item -LiteralPath 'LICENSE' -Destination dist
+          Copy-Item -LiteralPath 'licenses\WidescreenFixesPack.txt' -Destination dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: III.VC.ModernCarCam
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
