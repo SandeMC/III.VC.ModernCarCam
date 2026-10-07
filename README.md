@@ -51,6 +51,7 @@ Enhanced is based on the Vice City camera: it uses Vice City's feature set (stee
 - Adjustable stiffness, anchoring and height
 - Enhanced reverse driving camera
 - The Custom profile exposes camera distance and height offsets (`CustomDistanceOffset`, `CustomCameraHeight`) to dial in those tables
+- Takes over the Widescreen Fix's own Speed Sensitive FOV and VCS Camera Shake options: both are forced off in WSF while this mod is installed, so this mod's `DynamicSpeedFOV` and `VCSCamShake` settings are authoritative
 
 ## Building
 

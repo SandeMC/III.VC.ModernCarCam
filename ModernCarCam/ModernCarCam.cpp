@@ -376,6 +376,41 @@ CPad::FakeCarGunUpDown(void)
 #undef currentMode
 
 // ---------------------------------------------------------------------------
+// Widescreen Fixes Pack compatibility
+//
+// WSF has its own "CarSpeedDependantFOV" and "VCSCamShake" options and installs
+// hooks for them at game init. This mod owns both behaviours, so those options
+// are forced off in the running game's WSF ini before WSF reads it, which makes
+// WSF skip installing its hooks entirely. This is why enabling either feature in
+// WSF has no effect while ModernCarCam is installed.
+// ---------------------------------------------------------------------------
+static void OverrideWidescreenFixOptions(void)
+{
+	const char* iniName = nil;
+	if (isIII())
+		iniName = "GTAIII.WidescreenFix.ini";
+	else if (isVC())
+		iniName = "GTAVC.WidescreenFix.ini";
+	else if (isSA())
+		iniName = "GTASA.WidescreenFix.ini";
+
+	if (!iniName)
+		return;
+
+	// The ini sits either next to the game exe or in scripts\.
+	const char* dirs[2] = { "", ".\\scripts\\" };
+	char path[MAX_PATH];
+	for (int i = 0; i < 2; i++) {
+		strcpy(path, dirs[i]);
+		strcat(path, iniName);
+		if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) {
+			WritePrivateProfileStringA("MISC", "CarSpeedDependantFOV", "0", path);
+			WritePrivateProfileStringA("MISC", "VCSCamShake", "0", path);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // DllMain: detect the running game and install the hooks.
 // ---------------------------------------------------------------------------
 BOOL WINAPI
@@ -469,6 +504,10 @@ DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 		// The SA debug-menu call site is not reversed here; only III/VC expose it.
 		if (ditbAddress)
 			InterceptCall(&DebugInitTextBuffer, registerDebugMenu, ditbAddress);
+
+		// Make this mod's FOV / camera shake options win over the Widescreen
+		// Fix's own copies (must run before WSF reads its ini at game init).
+		OverrideWidescreenFixOptions();
 	}
 	return TRUE;
 }
