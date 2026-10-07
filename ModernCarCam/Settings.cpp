@@ -58,6 +58,11 @@ float customMaxElevationAngle = 0.785398f;
 float customMinElevationAngle = 1.5533431f;
 float customLateralOffset = 0.0f;
 
+float customDistanceScale = 1.0f;
+float customDriverOffsetX = 0.0f;
+float customDriverOffsetY = 0.0f;
+float customDriverOffsetZ = 0.0f;
+
 // GInput state.
 IGInputPad* ginputPad;
 int ginputLoaded = 0; // 1: not installed 2: installed
@@ -168,10 +173,17 @@ void LoadSettings()
 	customMinElevationAngle = ReadFloat("Custom", "CustomMinElevationAngle", 1.5533431f);
 	customLateralOffset = ReadFloat("Custom", "CustomLateralOffset", 0.0f);
 
+	customDistanceScale = ReadFloat("Custom", "CustomDistanceScale", 1.0f);
+	customDriverOffsetX = ReadFloat("Custom", "CustomDriverOffsetX", 0.0f);
+	customDriverOffsetY = ReadFloat("Custom", "CustomDriverOffsetY", 0.0f);
+	customDriverOffsetZ = ReadFloat("Custom", "CustomDriverOffsetZ", 0.0f);
+
 	// These offsets are only used by the Custom profile.
 	if (cameraProfile == PROFILE_CUSTOM_CAM) {
 		cameraLateralOffset = customLateralOffset;
 		cameraHeight = customCameraHeight;
+		cameraDistanceScale = customDistanceScale;
+		cameraDriverOffset = CVector(customDriverOffsetX, customDriverOffsetY, customDriverOffsetZ);
 	}
 
 	for (int i = 0; i < 8; i++) {
@@ -205,6 +217,7 @@ void LoadSettings()
 	OverrideBool("TrafficCamWobble", trafficCamWobble);
 	OverrideBool("ReverseCamera", reverseCam);
 	OverrideBool("BikesHeightIncrease", heightIncreaseOnBike);
+	cameraHeight = ReadFloat("Features", "CameraHeight", cameraHeight);
 
 	// Inverted relative to the internal "see underwater" flag.
 	int keepWater = GetPrivateProfileIntA("Features", "KeepCameraOverWater", -1, iniPath);

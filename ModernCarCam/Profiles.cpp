@@ -148,7 +148,7 @@ void applyProfile(ModernProfile profile, bool vc) {
 	mouseFreeLook = true;
 	heightIncreaseOnBike = vc;
 	fixTheBug = true;
-	trafficCamWobble = true;
+	trafficCamWobble = false;       // a mod effect: not part of any vanilla camera, opt-in
 	reverseCam = false;             // quality-of-life: Enhanced only, or forced in the ini
 	seeUnderwater = false;
 	cameraLateralOffset = 0.0f;
@@ -165,6 +165,7 @@ void applyProfile(ModernProfile profile, bool vc) {
 		dynamicSpeedFOV = true;
 		pitchTilt = 3;
 		vcsCamShake = true;
+		trafficCamWobble = true;
 		if (profile == PROFILE_ENHANCED) {
 			// Enhanced is the Vice City camera with the modern extras: adopt the
 			// Vice City feature flags, camera angles, anchor and stiffness even in
@@ -178,6 +179,22 @@ void applyProfile(ModernProfile profile, bool vc) {
 			reverseCam = true;
 			enhancedVC = true;
 		}
+		break;
+	case PROFILE_III:
+		// The GTA III camera has no steering wobble, no per-vehicle zoom table
+		// and no bike-passenger height; pin them to the III camera even when the
+		// profile is forced while Vice City is running.
+		cameraWobble = false;
+		pitchTilt = 0;
+		vehicleSpecificZoom = false;
+		heightIncreaseOnBike = false;
+		break;
+	case PROFILE_VC:
+		// Vice City's own camera feature set, also when forced on GTA III.
+		cameraWobble = true;
+		pitchTilt = 1;
+		vehicleSpecificZoom = true;
+		heightIncreaseOnBike = true;
 		break;
 	case PROFILE_VCS:
 		vcsCamShake = true;

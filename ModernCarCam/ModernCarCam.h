@@ -136,6 +136,12 @@ extern float customMaxElevationAngle;
 extern float customMinElevationAngle;
 extern float customLateralOffset;
 
+// Custom camera shape: distance multiplier and driver-seat orbit offset.
+extern float customDistanceScale;
+extern float customDriverOffsetX;
+extern float customDriverOffsetY;
+extern float customDriverOffsetZ;
+
 // Debug-menu choice labels.
 extern const char *profileNames[];
 extern const char *anchoringNames[];
