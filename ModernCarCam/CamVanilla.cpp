@@ -34,10 +34,11 @@ constexpr float BoatMaxHeightUp = 15.0f;
 // Native look handling for III/VC.
 //
 // The game looks left/right/behind itself, in CCam::Process, by calling
-// CCam::LookBehind / LookLeft / LookRight while the bound key is held. With
-// smooth side view off that is left untouched. With it on, the mod's engine
-// (Process_Cam_On_A_String_Vanilla below) drives the look smoothly, so the
-// native look must not set the camera and is simply swallowed.
+// CCam::LookBehind / LookLeft / LookRight while the bound key is held. The mod
+// drives look left/right/up/down as a free camera from the game's own look and
+// turret keys (see the free-look block below), so the native left/right snap is
+// swallowed while free-look is on; look behind stays with the game. With the
+// smooth side view on, the mod's smooth swing owns left/right/behind instead.
 // ---------------------------------------------------------------------------
 typedef void(__fastcall* VanillaLookFn)(void*);
 
@@ -45,20 +46,27 @@ static VanillaLookFn gLookBehind = nullptr;
 static VanillaLookFn gLookLeft = nullptr;
 static VanillaLookFn gLookRight = nullptr;
 
-static void VanillaLook(void* camVoid, VanillaLookFn orig) {
-	if (!smoothSideView) {
-		if (orig)
-			orig(camVoid);
-		return;
-	}
-	// Smooth side view is on: the mod's engine owns the look, so ignore the
-	// native look (it would overwrite the smooth swing).
-	UNREFERENCED_PARAMETER(camVoid);
+// True while the mod's free-look owns look left/right. Set each frame by
+// Process_Cam_On_A_String_Vanilla, which runs before CCam::Process calls the
+// native look, so the game's own side snap cannot fight the free camera.
+static bool gFreeLookOwnsLR = false;
+
+static void __fastcall HookLookBehind(void* cam) {
+	// Look behind stays with the game unless the smooth side view owns it.
+	if (!smoothSideView && gLookBehind)
+		gLookBehind(cam);
 }
 
-static void __fastcall HookLookBehind(void* cam) { VanillaLook(cam, gLookBehind); }
-static void __fastcall HookLookLeft(void* cam) { VanillaLook(cam, gLookLeft); }
-static void __fastcall HookLookRight(void* cam) { VanillaLook(cam, gLookRight); }
+static void __fastcall HookLookLeft(void* cam) {
+	// Free-look (or the smooth side view) owns look left/right: never snap.
+	if (!gFreeLookOwnsLR && !smoothSideView && gLookLeft)
+		gLookLeft(cam);
+}
+
+static void __fastcall HookLookRight(void* cam) {
+	if (!gFreeLookOwnsLR && !smoothSideView && gLookRight)
+		gLookRight(cam);
+}
 
 void InitVanillaLookHooks(bool vc, bool iii) {
     if (vc) {
@@ -94,6 +102,9 @@ Process_BehindBoat_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleClass* 
 	static const float FixerForGoingBelowGround = 0.4f;
 	static const float AmountUp = 2.2f;
 
+	// The keyboard free-look is a car-camera feature; boats keep the game's own
+	// look, so make sure a flag left set by the last car frame cannot swallow it.
+	gFreeLookOwnsLR = false;
 	if (!car->IsVehicle()) {
 		cam->ResetStatics = false;
 		return;
@@ -207,6 +218,8 @@ Process_BehindBoat_VC(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, 
 	static float WaterLevelBuffered = 0.0f;
 	static float WaterLevelSpeed = 0.0f;
 
+	// See Process_BehindBoat_Vanilla: boats keep the game's own look.
+	gFreeLookOwnsLR = false;
 	if (!car->IsVehicle()) {
 		cam->ResetStatics = false;
 		return;
@@ -341,6 +354,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	static float heightIncreaseMult = 0.0f;
 	static bool PreviousNearCheckNearClipSmall = false;
 
+	gFreeLookOwnsLR = false;
 	if (!car->IsVehicle())
 		return;
 
@@ -357,8 +371,15 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		return; // collision model not loaded yet (e.g. a vehicle added at an unused ID)
 	CVector Dimensions = carCol->boundingBox.max - carCol->boundingBox.min;
 
+	// Free-look owns look left/right in III/VC: the game's own look/turret keys
+	// (VC binds Look left/right, III binds Turret left/right, both bind Turret /
+	// Lean up/down) drive it from the free-look block below, so the native
+	// left/right snap is swallowed (see the look hooks above) and only look
+	// behind still gates the follow camera.
+	gFreeLookOwnsLR = mouseFreeLook;
+
 	const uint8 nextDirectionIsForward =
-		!(pad->GetLookBehindForCar() || pad->GetLookBehindForPed() || pad->GetLookLeft() || pad->GetLookRight()) &&
+		!(pad->GetLookBehindForCar() || pad->GetLookBehindForPed()) &&
 		cam->DirectionWasLooking == LOOKING_FORWARD;
 
 	// ---- Field of view ----
@@ -504,11 +525,12 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	// ---- Look left / right / behind ----
 	// III/VC handle look in CCam::Process (CCam::LookBehind / LookLeft /
 	// LookRight), which run right after this function and set Source directly
-	// from the car position/heading. The mod must not move Beta here: LookBehind
-	// picks the direction from DeltaBeta = carHeading - Beta, and a front-facing
-	// Beta makes it latch LookBehindCamWasInFront and flip the camera back behind
-	// (which looked like "forwards"). So the mod leaves Beta alone and lets the
-	// game look; the vanilla string physics below bring the camera back.
+	// from the car position/heading. Look behind is still left to the game, so
+	// the mod must not move Beta for it: LookBehind picks the direction from
+	// DeltaBeta = carHeading - Beta, and a front-facing Beta makes it latch
+	// LookBehindCamWasInFront and flip the camera back behind (which looked like
+	// "forwards"). Look left/right are now driven as free-look below (the native
+	// snap is swallowed); the vanilla string physics bring the camera back.
 
 	// ---- Mouse free-look (ported from the San Andreas camera) ----
 	// The mouse is read before the camera direction is finalised. While the player
@@ -547,23 +569,27 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		}
 	}
 
-	// ---- Gamepad right-stick free-look ----
-	// The right stick drives the same free-look as the mouse. GetCarGun(LR/UD)
-	// is the unprocessed right stick (the same value the SA camera reads), so
-	// this works with both the classic controls and GInput.
+	// ---- Free-look (gamepad right stick + the game's own keyboard look keys) ----
+	// GetCarGun(LR/UD) is the turret/right-stick axis. III/VC feed the game's
+	// own keyboard look/turret keys into it too (VC: Look left/right; III: Turret
+	// left/right; both: Turret/Lean up/down), so reading it gives the keyboard
+	// free-look for free, driven exactly like the right stick. III/VC have no
+	// free camera of their own, so the vertical axis is no longer zeroed out.
 	if (mouseFreeLook && !GetDisablePlayerControls(pad) && nextDirectionIsForward) {
 		float stickX = -(float)pad->GetCarGunLeftRight();
 		float stickY = (float)pad->GetCarGunUpDown();
 
+		// With the smooth side view on, the game's look keys swing the camera
+		// (the mod's smooth look) instead of free-looking, so drop just the
+		// horizontal keyboard contribution; the right stick still free-looks.
+		if (smoothSideView && (pad->GetLookLeft() || pad->GetLookRight()))
+			stickX = 0.0f;
+
 		const bool ginputHasPad = ginputPad->HasPadInHands();
-		if (ginputLoaded == 2 ? !ginputHasPad : m_bUseMouse3rdPerson)
-			stickY = 0.0f;
-		else {
-			if (ginputHasPad && padSettings.InvertLook)
-				stickY = -stickY;
-			if (vc && *(bool*)0xA10AF7)
-				stickY = -stickY;
-		}
+		if (ginputHasPad && padSettings.InvertLook)
+			stickY = -stickY;
+		if (vc && *(bool*)0xA10AF7)
+			stickY = -stickY;
 
 		// Exponential smoothing so the gamepad camera does not feel rough.
 		static float smoothedStickX = 0.0f;

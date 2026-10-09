@@ -2,25 +2,24 @@ III.VC.SA.ModernCarCam
 ======================
 
 A modern vehicle camera for GTA III, GTA Vice City and GTA San Andreas.
-The default settings reproduce each game's own vehicle camera; optional extras
-(steering wobble, elastic string physics, terrain tilt, dynamic speed FOV, VCS
-camera shake, reverse look-behind, free look, modern drive-by aiming) are layered
-on top and are all configurable in III.VC.SA.ModernCarCam.ini. Terrain tilt has a
-minimum-slope dead-zone (and a predictable in-air behaviour), the passing-traffic
-nudge is one short speed-scaled impulse, and the reverse camera waits a
-configurable delay before swinging. The IV profile uses dynamic FOV and, on
-GTA III, a softer camera heading follow (the `HeadingFollow` option, handy for
-custom profiles too).
 
-Install
+======================
+
+Installation
 -------
-1. Install an ASI loader, for example Silent's ASI Loader
-   (https://github.com/ThirteenAG/Ultimate-ASI-Loader).
-2. Copy III.VC.SA.ModernCarCam.asi and III.VC.SA.ModernCarCam.ini into your
-   GTA III, GTA Vice City or GTA San Andreas game folder. The .ini is also
-   found in a "scripts" subfolder.
-3. Start the game. Open III.VC.SA.ModernCarCam.ini and set
-   Profile = Game (default), III, VC, SA, LCS, VCS, IV, Enhanced or Custom.
+
+1. Install an ASI loader (for example Silent's ASI Loader - https://github.com/GTAmodding/ASI-Loader/releases/latest or Ultimate ASI Loader - https://github.com/ThirteenAG/Ultimate-ASI-Loader.
+2. Copy III.VC.SA.ModernCarCam.asi and III.VC.SA.ModernCarCam.ini into the scripts folder or game folder.
+3. Edit III.VC.SA.ModernCarCam.ini and set Profile to the camera you want. Everything else is optional.
+
+For Widescreen Fix users: this mod takes over the Widescreen Fix's own Speed Sensitive FOV and VCS Camera Shake options: both are forced off in WSF while this mod is installed, so this mod's DynamicSpeedFOV and VCSCamShake settings are authoritative (the code is the same, this is done to avoid confusion)
+
+For Drive-by mods users:
+- Modernized Driveby features have been reimplemented in this mod; I wouldn't recommend using both mods at once
+- Manual Driveby VC - https://libertycity.net/files/gta-vice-city/213323-manual-driveby-vc.html),
+  Manual Driveby III - https://libertycity.net/files/gta-3/213322-manual-driveby-iii.html
+  and Manual Driveby Refixed (SA) - https://libertycity.net/files/gta-san-andreas/213857-manual-driveby-refixed.html
+  are the only "Manual" style mods tested against this mod and verified to be compatible
 
 Sources
 -------
@@ -31,16 +30,15 @@ Sources
 
 Debug menu
 ----------
-When the game's debug menu is available (a debug build, or a debug-menu
-enabler), the mod adds a "ModernCarCam" section with live toggles for the modern
-drive-by, its two shot-direction locks, the smooth side view, mouse free-look,
-free turret control, the water camera and the camera-bug fix. Toggling an entry
-applies immediately; the ini is still the source of truth on the next launch.
+When the game's debug menu (https://libertycity.net/files/gta-san-andreas/161611-debugmenu.html) is available, the mod adds a **ModernCarCam** section to it with live toggles for every feature.
 
 Credits
 -------
-Based on the reversed sources of re3 (GTA III) and reVC (Vice City). The VCS
-camera shake and speed-dependent FOV are ported from ThirteenAG's
-WidescreenFixesPack. The modern drive-by aiming was worked out with help from
-ModernizedDriveBy (https://libertycity.net/files/gta-san-andreas/215460-modernized-driveby.html)
-by void. See the LICENSE and licenses/ folder for details.
+
+- Original SACarCam by erorcun and the SACarCamWithModernDriveBy fork by ICantReadYourMind.
+- Authentic camera algorithms based on the reversed GTA III / Vice City sources of re3 / reVC, using the Hezkore/hez-gta-re3 fork. re3 is not released under a standard license; its terms (educational / documentation / modding use, non-commercial, keep derivative work open source, give proper credit) are reproduced in `licenses/re3.txt`.
+- VCS camera shake and dynamic speed FOV ported from ThirteenAG's WidescreenFixesPack, MIT licensed. See `licenses/WidescreenFixesPack.txt`.
+- San Andreas addresses and layouts grounded in gta-reversed and plugin-sdk.
+- The modern drive-by aiming (sideways aiming based on the camera angle) was worked out with help from ModernizedDriveBy (https://libertycity.net/files/gta-san-andreas/215460-modernized-driveby.html) by void.
+- This project is MIT licensed; see `LICENSE`. The third-party notices in `licenses/` apply to the portions they describe.
+- This project has been developed primarily by AI agents, but it has been thoroughly tested throughout the way.

@@ -242,9 +242,11 @@ void applyProfile(ModernProfile profile, bool vc) {
 	case PROFILE_III:
 		// The GTA III camera has no steering wobble, no per-vehicle zoom table
 		// and no bike-passenger height; pin them to the III camera even when the
-		// profile is forced while Vice City is running.
+		// profile is forced while Vice City is running. GTA III pitches the camera
+		// downhill but not uphill, like Vice City.
 		cameraWobble = 0.0f;
-		pitchTilt = 0.0f;
+		pitchTilt = 1.0f;
+		pitchTiltUphill = 0.0f;        // authentic GTA III: downhill only
 		vehicleSpecificZoom = 0.0f;
 		heightIncreaseOnBike = false;
 		break;

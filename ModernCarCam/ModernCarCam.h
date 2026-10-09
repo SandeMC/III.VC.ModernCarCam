@@ -474,7 +474,7 @@ void LoadSettings();
 void OnGInputSettingsReload();
 void registerDebugMenu();
 void onMasterProfileChange(void);
-void InitVanillaLookHooks(bool vc, bool iii);   // smooths the III/VC native look when SmoothSideView is on
+void InitVanillaLookHooks(bool vc, bool iii);   // takes over the III/VC native look for SmoothSideView / keyboard free-look
 
 // ---------------------------------------------------------------------------
 // Camera engine entry points

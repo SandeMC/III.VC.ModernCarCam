@@ -5,8 +5,9 @@
 //
 // LoadSettings() reads the ini (next to the asi, or the shipped names), picks
 // the user-facing profile, calls applyProfile() for the defaults, then applies
-// the optional [General] table-profile overrides and [Features] overrides on
-// top. A missing key always leaves the profile's value untouched.
+// the optional [General] table-profile overrides plus the [Features] switches
+// and [Multipliers] strengths on top. A missing key, a blank value or "Auto"
+// always leaves the profile's value untouched.
 // ---------------------------------------------------------------------------
 
 // User-facing profile and the resolved internal table selectors.
@@ -151,23 +152,58 @@ void LoadSettings()
 	anglesProfile = ParseTableProfile(tableBuf, anglesProfile);
 
 	// The profile already chose the defaults. These ini keys are optional
-	// overrides: omit a key to keep the profile's value. Strength keys take a
-	// multiplier (1 = the profile default, 0 = off).
+	// overrides: omit a key (or set it to Auto) to keep the profile's value.
+	// ReadTrimmed strips any inline "; comment" and trailing blanks, since the
+	// Win32 profile API keeps them as part of the value otherwise.
+	auto ReadTrimmed = [&](const char* sec, const char* key, char* out, size_t n) {
+		out[0] = 0;
+		GetPrivateProfileStringA(sec, key, "", out, (DWORD)n, iniPath);
+		char* semi = strchr(out, ';');
+		if (semi)
+			*semi = 0;
+		size_t len = strlen(out);
+		while (len > 0 && (out[len - 1] == ' ' || out[len - 1] == '\t'))
+			out[--len] = 0;
+	};
 	auto ReadFloat = [&](const char* sec, const char* key, float def) -> float {
-		char buf[32] = { 0 };
-		GetPrivateProfileStringA(sec, key, "", buf, sizeof(buf), iniPath);
+		char buf[64];
+		ReadTrimmed(sec, key, buf, sizeof(buf));
 		return buf[0] ? (float)atof(buf) : def;
 	};
-	auto OverrideFloat = [&](const char* key, float& out) {
-		char buf[32] = { 0 };
-		GetPrivateProfileStringA("Features", key, "", buf, sizeof(buf), iniPath);
-		if (buf[0])
-			out = (float)atof(buf);
+
+	// [Features] tri-state switch: -1 = Auto/blank, 0 = off, 1 = on.
+	auto ReadSwitch = [&](const char* key) -> int {
+		char buf[64];
+		ReadTrimmed("Features", key, buf, sizeof(buf));
+		if (!buf[0] || _stricmp(buf, "auto") == 0)
+			return -1;
+		return atoi(buf) != 0 ? 1 : 0;
 	};
-	auto OverrideBool = [&](const char* key, bool& out) {
-		int val = GetPrivateProfileIntA("Features", key, -1, iniPath);
-		if (val != -1)
-			out = (val != 0);
+	// [Multipliers] numeric value. Returns false for Auto / blank.
+	auto ReadMultiplier = [&](const char* key, float& out) -> bool {
+		char buf[64];
+		ReadTrimmed("Multipliers", key, buf, sizeof(buf));
+		if (!buf[0] || _stricmp(buf, "auto") == 0)
+			return false;
+		out = (float)atof(buf);
+		return true;
+	};
+	// A switchable effect: the [Features] switch decides on/off, the
+	// [Multipliers] value scales the strength. profileVal is what applyProfile
+	// already set (0 = off, otherwise the profile's strength).
+	auto CombineEffect = [&](const char* key, float profileVal) -> float {
+		int sw = ReadSwitch(key);
+		float mult = 0.0f;
+		bool multSet = ReadMultiplier(key, mult);
+		bool enabled = (sw == 1) ? true : (sw == 0 ? false : profileVal > 0.0f);
+		float strength = multSet ? mult : (profileVal > 0.0f ? profileVal : 1.0f);
+		return enabled ? strength : 0.0f;
+	};
+	// Plain on/off feature from [Features].
+	auto ReadBool = [&](const char* key, bool& out) {
+		int sw = ReadSwitch(key);
+		if (sw != -1)
+			out = (sw != 0);
 	};
 
 	// [Offsets] - applied on top of every profile, so they are additive (or
@@ -189,9 +225,10 @@ void LoadSettings()
 
 	customBaseFOV = ReadFloat("Custom", "CustomBaseFOV", 70.0f);
 
-	customAngleNear = ReadFloat("Custom", "CustomAngleNear", -0.01f);
-	customAngleMid  = ReadFloat("Custom", "CustomAngleMid", 0.045f);
-	customAngleFar  = ReadFloat("Custom", "CustomAngleFar", 0.005f);
+	// The ini expresses the camera angles in degrees; the engine stores radians.
+	customAngleNear = DEGTORAD(ReadFloat("Custom", "CustomAngleNear", -0.57f));
+	customAngleMid  = DEGTORAD(ReadFloat("Custom", "CustomAngleMid", 2.58f));
+	customAngleFar  = DEGTORAD(ReadFloat("Custom", "CustomAngleFar", 0.29f));
 
 	for (int i = 0; i < 8; i++) {
 		CARCAM_SET_CUSTOM[i][1] = 0.0f; // distance offset now lives in [Offsets]
@@ -208,63 +245,62 @@ void LoadSettings()
 		ZmThreeAlphaOffsetCustom[i] = customAngleFar;
 	}
 
-	// Optional feature overrides on top of the profile.
-	OverrideFloat("CameraWobble", cameraWobble);
-	OverrideFloat("ElasticStringPhysics", elasticStringPhysics);
-	OverrideFloat("PitchTilt", pitchTilt);
-	OverrideFloat("PitchTiltUphill", pitchTiltUphill);
-	OverrideFloat("PitchTiltDownhill", pitchTiltDownhill);
-	// The ini expresses the dead-zone in degrees (easy to reason about); the
-	// engine works in radians like the rest of the pitch maths.
-	{
-		char buf[32] = { 0 };
-		GetPrivateProfileStringA("Features", "PitchTiltMinAngle", "", buf, sizeof(buf), iniPath);
-		if (buf[0])
-			pitchTiltMinAngle = DEGTORAD((float)atof(buf));
-	}
-	OverrideFloat("PitchTiltAirHoldTime", pitchTiltAirHoldTime);
-	OverrideFloat("PitchTiltAirBlendTime", pitchTiltAirBlendTime);
-	OverrideFloat("MaxPitch", maxPitchAngle);
-	OverrideFloat("MinPitch", minPitchAngle);
-	OverrideFloat("DynamicSpeedFOV", dynamicSpeedFOV);
-	OverrideFloat("DynamicSpeedFOVStartSpeed", dynamicSpeedFOVStartSpeed);
-	OverrideFloat("DynamicSpeedFOVMaxFOV", dynamicSpeedFOVMaxFOV);
-	OverrideFloat("VCSCamShake", vcsCamShake);
-	OverrideFloat("VCSCamShakeStartSpeed", vcsCamShakeStartSpeed);
-	OverrideFloat("CameraAnchoring", cameraAnchoring);
-	OverrideFloat("CameraStiffness", cameraStiffness);
-	OverrideFloat("HeadingFollow", headingFollow);
-	OverrideFloat("VehicleSpecificZoom", vehicleSpecificZoom);
-	OverrideFloat("TrafficCamWobble", trafficCamWobble);
-	OverrideFloat("TrafficCamWobbleMinSpeed", trafficCamWobbleMinSpeed);
-	OverrideFloat("TrafficCamWobbleFullSpeed", trafficCamWobbleFullSpeed);
-	OverrideFloat("TrafficCamWobbleMaxMultiplier", trafficCamWobbleMaxMultiplier);
-	OverrideFloat("ReverseCameraDelay", reverseCamDelay);
-	OverrideFloat("DynamicSpeedFOVDecay", dynamicSpeedFOVDecay);
-	OverrideFloat("CameraReturnSpeed", cameraReturnSpeed);
-	OverrideFloat("CameraReturnTime", cameraReturnTime);
-	OverrideBool("ModernTurretControl", modernTurretControl);
-	OverrideBool("ModernDriveBy", modernDriveBy);
-	OverrideBool("LockShootDirectionKBM", lockShootDirKBM);
-	OverrideBool("LockShootDirectionJOY", lockShootDirJOY);
-	OverrideBool("MouseFreeLook", mouseFreeLook);
-	OverrideBool("FixCameraClip", fixTheBug);
-	OverrideBool("ReverseCamera", reverseCam);
-	OverrideBool("BikesHeightIncrease", heightIncreaseOnBike);
-	OverrideBool("SmoothSideView", smoothSideView);
+	// [Features] switches + [Multipliers] strengths. Switchable effects combine
+	// the two: the switch decides on/off, the multiplier scales the strength.
+	cameraWobble = CombineEffect("CameraWobble", cameraWobble);
+	elasticStringPhysics = CombineEffect("ElasticStringPhysics", elasticStringPhysics);
+	pitchTilt = CombineEffect("PitchTilt", pitchTilt);
+	dynamicSpeedFOV = CombineEffect("DynamicSpeedFOV", dynamicSpeedFOV);
+	vcsCamShake = CombineEffect("VCSCamShake", vcsCamShake);
+	trafficCamWobble = CombineEffect("TrafficCamWobble", trafficCamWobble);
+	cameraAnchoring = CombineEffect("CameraAnchoring", cameraAnchoring);
+	vehicleSpecificZoom = CombineEffect("VehicleSpecificZoom", vehicleSpecificZoom);
+
+	// [Multipliers]: Auto keeps the profile value. Speeds are km/h and angles
+	// are degrees in the ini; convert to the engine's units here.
+	float value = 0.0f;
+	if (ReadMultiplier("PitchTiltUphill", value))       pitchTiltUphill = value;
+	if (ReadMultiplier("PitchTiltDownhill", value))     pitchTiltDownhill = value;
+	if (ReadMultiplier("PitchTiltMinAngle", value))     pitchTiltMinAngle = DEGTORAD(value);
+	if (ReadMultiplier("PitchTiltAirHoldTime", value))  pitchTiltAirHoldTime = value;
+	if (ReadMultiplier("PitchTiltAirBlendTime", value)) pitchTiltAirBlendTime = value;
+	if (ReadMultiplier("MaxPitch", value))              maxPitchAngle = DEGTORAD(value);
+	if (ReadMultiplier("MinPitch", value))              minPitchAngle = DEGTORAD(value);
+	if (ReadMultiplier("DynamicSpeedFOVStartSpeed", value))  dynamicSpeedFOVStartSpeed = value / SpeedKphFactor;
+	if (ReadMultiplier("DynamicSpeedFOVMaxFOV", value))      dynamicSpeedFOVMaxFOV = value;
+	if (ReadMultiplier("DynamicSpeedFOVDecay", value))       dynamicSpeedFOVDecay = value;
+	if (ReadMultiplier("VCSCamShakeStartSpeed", value))      vcsCamShakeStartSpeed = value / SpeedKphFactor;
+	if (ReadMultiplier("TrafficCamWobbleMinSpeed", value))   trafficCamWobbleMinSpeed = value / SpeedKphFactor;
+	if (ReadMultiplier("TrafficCamWobbleFullSpeed", value))  trafficCamWobbleFullSpeed = value / SpeedKphFactor;
+	if (ReadMultiplier("TrafficCamWobbleMaxMultiplier", value)) trafficCamWobbleMaxMultiplier = value;
+	if (ReadMultiplier("CameraStiffness", value))       cameraStiffness = value;
+	if (ReadMultiplier("HeadingFollow", value))         headingFollow = value;
+	if (ReadMultiplier("ReverseCameraDelay", value))    reverseCamDelay = value;
+	if (ReadMultiplier("CameraReturnSpeed", value))     cameraReturnSpeed = value;
+	if (ReadMultiplier("CameraReturnTime", value))      cameraReturnTime = value;
+
+	// [Features] plain switches.
+	ReadBool("ModernTurretControl", modernTurretControl);
+	ReadBool("ModernDriveBy", modernDriveBy);
+	ReadBool("LockShootDirectionKBM", lockShootDirKBM);
+	ReadBool("LockShootDirectionJOY", lockShootDirJOY);
+	ReadBool("MouseFreeLook", mouseFreeLook);
+	ReadBool("FixCameraClip", fixTheBug);
+	ReadBool("ReverseCamera", reverseCam);
+	ReadBool("BikesHeightIncrease", heightIncreaseOnBike);
+	ReadBool("SmoothSideView", smoothSideView);
 
 	// Inverted relative to the internal "see underwater" flag.
-	int keepWater = GetPrivateProfileIntA("Features", "KeepCameraOverWater", -1, iniPath);
+	int keepWater = ReadSwitch("KeepCameraOverWater");
 	if (keepWater != -1)
 		seeUnderwater = (keepWater == 0);
 
-	// Enhanced on San Andreas keeps the SA distance/FOV/angles, anchor and
-	// stiffness even if the ini overrides them. The VC steering wobble and VCS
-	// camera shake are off by default on SA but can still be enabled here.
+	// Enhanced on San Andreas keeps the SA anchor and stiffness even if the ini
+	// overrides them. Its distance, FOV and angles default to SA too, but the
+	// DistanceProfile / FOVProfile / AnglesProfile keys above override them. The
+	// VC steering wobble and VCS camera shake are off by default on SA but can
+	// still be enabled here.
 	if (isSA() && cameraProfile == PROFILE_ENHANCED) {
-		distanceProfile = PROFILE_SA;
-		fovProfile = PROFILE_SA;
-		anglesProfile = PROFILE_SA;
 		cameraAnchoring = 0.0f;
 		cameraStiffness = 1.0f;
 	}

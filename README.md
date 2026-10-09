@@ -1,30 +1,22 @@
 # III.VC.SA.ModernCarCam
 
-A universal vehicle camera ASI for GTA III, GTA Vice City and GTA San Andreas.
-With the shipped settings the camera reproduces the original game; every
-additional behaviour is an ini option or a profile layered on top.
+- Also published on LibertyCity: [ModernCarCam (III, VC, SA)](https://libertycity.net/files/244225-moderncarcam-iii-vc-sa.html)
 
-The authentic camera is based on the reversed sources of re3 (GTA III) and reVC
-(Vice City). GTA III and Vice City implement the vehicle camera differently, so
-the mod keeps both algorithms and picks the right one for the running game.
-San Andreas already ships the follow camera this mod is built around, so on SA
-the mod hooks `CCam::Process_FollowCar_SA` directly and keeps the SA camera's own
-distance, FOV, angles, anchor and stiffness.
+A universal vehicle camera ASI for GTA III, GTA Vice City and GTA San Andreas. With the shipped settings the camera reproduces the original game; every additional behaviour is an ini option or a profile layered on top.
+
+The authentic camera is based on the reversed sources of re3 (GTA III) and reVC (Vice City). GTA III and Vice City implement the vehicle camera differently, so the mod keeps both algorithms and picks the right one for the running game. San Andreas already ships the follow camera this mod is built around, so on SA the mod hooks `CCam::Process_FollowCar_SA` directly and keeps the SA camera's own distance, FOV, angles, anchor and stiffness.
 
 ## Installation
 
-1. Install an ASI loader (for example
-   [Silent's ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader)).
-2. Copy `III.VC.SA.ModernCarCam.asi` and `III.VC.SA.ModernCarCam.ini` into the
-   game folder (GTA III, GTA Vice City or GTA San Andreas). The mod also finds
-   the ini in a `scripts` subfolder.
-3. Edit `III.VC.SA.ModernCarCam.ini` and set `Profile` to the camera you want.
-   Everything else is optional.
+1. Install an ASI loader (for example [Silent's ASI Loader](https://github.com/GTAmodding/ASI-Loader/releases/latest) or [Ultimate ASI Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader)).
+2. Copy `III.VC.SA.ModernCarCam.asi` and `III.VC.SA.ModernCarCam.ini` into the scripts folder or game folder.
+3. Edit `III.VC.SA.ModernCarCam.ini` and set `Profile` to the camera you want. Everything else is optional.
 
-## Downloads & sources
+For Widescreen Fix users: this mod takes over the Widescreen Fix's own Speed Sensitive FOV and VCS Camera Shake options: both are forced off in WSF while this mod is installed, so this mod's DynamicSpeedFOV and VCSCamShake settings are authoritative (the code is the same, this is done to avoid confusion)
 
-- Source and releases: [SandeMC/SACarCamWithModernDriveByWithTilt](https://github.com/SandeMC/SACarCamWithModernDriveByWithTilt)
-- Also published on LibertyCity: [ModernCarCam (III, VC, SA)](https://libertycity.net/files/244225-moderncarcam-iii-vc-sa.html)
+For Drive-by mods users:
+- Modernized Driveby features have been reimplemented in this mod; I wouldn't recommend using both mods at once
+- [Manual Driveby VC](https://libertycity.net/files/gta-vice-city/213323-manual-driveby-vc.html), [Manual Driveby III](https://libertycity.net/files/gta-3/213322-manual-driveby-iii.html) and [Manual Driveby Refixed (SA)](https://libertycity.net/files/gta-san-andreas/213857-manual-driveby-refixed.html) are the only "Manual" style mods tested against this mod and verified to be compatible
 
 ## Profiles
 
@@ -41,63 +33,40 @@ The camera is selected with a single `Profile` setting:
 | VCS          | Vice City Stories camera                                           |
 | IV           | GTA IV camera style                                                |
 
-IV is an approximation of that game's feel applied on top of the modern camera; its exact distances and angles can be dialled in with the Custom profile.
-
-Game, III, VC and SA profiles add only the free camera and fixes on top of the original camera. Everything else (wobble, elastic string, dynamic FOV, shake, etc.) is off in those profiles and available as an override in `[Features]` or through the Enhanced / modern profiles.
+Game, III, VC and SA profiles add only the free camera and fixes on top of the original camera. III and VC also react to the terrain: their cameras pitch downhill but not uphill. Everything else (wobble, elastic string, dynamic FOV, shake, etc.) is off in those profiles and available as an override in `[Features]` or through the Enhanced / modern profiles.
 
 Enhanced is based on the Vice City camera: it uses Vice City's feature set (steering roll, per-vehicle zoom, bike-with-passenger height), Vice City's per-zoom camera angles, and Vice City's camera anchor and stiffness, even when running GTA III. It also enables the elastic string, dynamic speed FOV, full terrain pitch tilt, VCS shake and the reverse look-behind camera. When running GTA San Andreas, Enhanced enables those same features but the SA camera keeps its own distance, FOV, angles, anchor and stiffness, and leaves the Vice City steering wobble and VCS shake off by default (they can still be turned on in `[Features]`). The III-only turret hook is not installed on SA.
 
 Enhanced also turns on the smooth side view and sets the drive-by defaults it ships with: `LockShootDirectionKBM = 0` and `LockShootDirectionJOY = 1`.
 
+IV is an approximation of IVs feel applied on top of the SA camera; its exact distances and angles can be dialed manually.
+
 ## Features
 
 - One profile for the whole camera, with optional per-feature overrides
 - Faithful GTA III and Vice City vehicle cameras recreations, can add any feature on-top of them
-- Free mouse look from San Andreas as an option, with a smoothed gamepad right stick (works in III, VC and SA)
-- Free turret control from San Andreas as an option (Rhino / Firetruck)
-- Drive-by aiming: classic (aim left/right/behind only while the look key is held) or modern (aim where the camera looks), with an optional per-burst direction lock, separate for keyboard/mouse and gamepad
-- Smooth side view: the look left/right/behind transition swings into place instead of snapping
-- Dynamic speed FOV (ported from ThirteenAG's Widescreen Fix), with a configurable wind-down speed (`DynamicSpeedFOVDecay`); the IV profile enables it and winds it back down in about half a second
-- Vice City Stories camera shake (ported from ThirteenAG's Widescreen Fix); the VCS profile uses full strength and the Enhanced profile uses half
-- Steering wobble from Vice City as an option
-- Terrain pitch tilt from Vice City as an option, with a new option to also apply the tilt when going upwards; a minimum-slope dead-zone (`PitchTiltMinAngle`, in degrees) stops flat roads jittering, and in the air the last ground tilt is held briefly before easing onto the car's nose
+- Free mouse look from San Andreas, with a smoothed gamepad right stick view
+- Free turret control from San Andreas (Rhino / Firetruck)
+- Modern drive-by aiming - aim where the camera looks, with an optional per-burst direction lock, separate for keyboard/mouse and gamepad
+- Smooth side view - the look left/right/behind transition swings into place instead of snapping
+- Configurable dynamic speed FOV (ported from ThirteenAG's Widescreen Fix)
+- Configurable Vice City Stories camera shake (ported from ThirteenAG's Widescreen Fix)
+- Configurable Steering wobble from Vice City
+- Configurable terrain pitch tilt, with a new option to also apply the tilt when going upwards and several adjustments made to how it works;
 - Per-vehicle zoom from Vice City as an option
 - Bike passenger height option
 - Elastic string stretch from San Andreas as an option
-- A single nudge when passing traffic closely (not a continuous lean), which scales up with speed and only fires while moving
-- Several fixes
+- A configurable traffic pass-by wobble
 - Adjustable stiffness, anchoring and height
 - Enhanced reverse driving camera, with an adjustable delay before it swings
-- Every feature strength is a multiplier: `1` is the profile default, `0` turns
-  it off, and any other value scales it (for example `CameraWobble = 2` doubles
-  the steering lean, `0.5` halves it). `PitchTilt` takes optional
-  `PitchTiltUphill` / `PitchTiltDownhill` overrides plus `PitchTiltMinAngle`
-  (degrees) and the `PitchTiltAirHoldTime` / `PitchTiltAirBlendTime` airborne
-  timings; `TrafficCamWobble` takes `TrafficCamWobbleMinSpeed` /
-  `TrafficCamWobbleFullSpeed` / `TrafficCamWobbleMaxMultiplier`;
-  `ReverseCamera` takes `ReverseCameraDelay`; `HeadingFollow` scales how eagerly
-  the SA follow camera swings in behind the car (lower holds the view longer,
-  handy for custom profiles); and `DynamicSpeedFOV` / `VCSCamShake` take their
-  own start-speed (and max-FOV / decay) options.
-- The `[Offsets]` category moves the camera offsets out of the profile so they
-  apply to every profile: `CameraHeightOffset`, `CameraLateralOffset`,
-  `CameraDistanceOffset`, `CameraMinDistance`, `CameraDistanceScale` and
-  `CameraDriverOffsetX/Y/Z`
-- Takes over the Widescreen Fix's own Speed Sensitive FOV and VCS Camera Shake options: both are forced off in WSF while this mod is installed, so this mod's `DynamicSpeedFOV` and `VCSCamShake` settings are authoritative
 
 ## Debug menu
 
-When the game's debug menu is available (a debug build, or a debug-menu enabler),
-the mod adds a **ModernCarCam** section to it with live toggles for the modern
-drive-by, its two shot-direction locks, the smooth side view, mouse free-look,
-free turret control, the water camera and the camera-bug fix. Toggling an entry
-applies immediately; the ini is still the source of truth on the next launch.
+When the [game's debug menu](https://libertycity.net/files/gta-san-andreas/161611-debugmenu.html) is available, the mod adds a **ModernCarCam** section to it with live toggles for every feature.
 
 ## Building
 
-Open `ModernCarCam.sln` and build `Release` (Win32). The output is
-`Release\III.VC.SA.ModernCarCam.asi`, next to the shipped
-`III.VC.SA.ModernCarCam.ini`.
+Open `ModernCarCam.sln` and build `Release` (Win32). The output is `Release\III.VC.SA.ModernCarCam.asi`, next to the shipped `III.VC.SA.ModernCarCam.ini`.
 
 ## Credits & licenses
 
