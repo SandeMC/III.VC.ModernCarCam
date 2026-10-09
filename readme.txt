@@ -30,7 +30,7 @@ Sources
 
 Debug menu
 ----------
-When the game's debug menu (https://libertycity.net/files/gta-san-andreas/161611-debugmenu.html) is available, the mod adds a ModernCarCam section to it on GTA III, Vice City and San Andreas. It exposes everything the ini can set as live controls - the profile, every feature toggle, the effect strengths, the slope/FOV/shake/traffic tuning, the anchors and stiffness, the offsets and the Custom camera shape - grouped into submenus. Angles and speed thresholds are edited in the same units as the ini (degrees and km/h).
+When the game's debug menu (https://libertycity.net/files/gta-san-andreas/161611-debugmenu.html) is available, the mod adds a **ModernCarCam** section to it with live toggles for every feature.
 
 Credits
 -------
