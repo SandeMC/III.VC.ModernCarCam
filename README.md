@@ -57,22 +57,28 @@ Enhanced also turns on the smooth side view and sets the drive-by defaults it sh
 - Free turret control from San Andreas as an option (Rhino / Firetruck)
 - Drive-by aiming: classic (aim left/right/behind only while the look key is held) or modern (aim where the camera looks), with an optional per-burst direction lock, separate for keyboard/mouse and gamepad
 - Smooth side view: the look left/right/behind transition swings into place instead of snapping
-- Dynamic speed FOV (ported from ThirteenAG's Widescreen Fix)
-- Vice City Stories camera shake (ported from ThirteenAG's Widescreen Fix)
+- Dynamic speed FOV (ported from ThirteenAG's Widescreen Fix), with a configurable wind-down speed (`DynamicSpeedFOVDecay`); the IV profile enables it and winds it back down in about half a second
+- Vice City Stories camera shake (ported from ThirteenAG's Widescreen Fix); the VCS profile uses full strength and the Enhanced profile uses half
 - Steering wobble from Vice City as an option
-- Terrain pitch tilt from Vice City as an option, with a new option to also apply the tilt when going upwards
+- Terrain pitch tilt from Vice City as an option, with a new option to also apply the tilt when going upwards; a minimum-slope dead-zone (`PitchTiltMinAngle`, in degrees) stops flat roads jittering, and in the air the last ground tilt is held briefly before easing onto the car's nose
 - Per-vehicle zoom from Vice City as an option
 - Bike passenger height option
 - Elastic string stretch from San Andreas as an option
-- Camera wobbling when passing by traffic option
+- A single nudge when passing traffic closely (not a continuous lean), which scales up with speed and only fires while moving
 - Several fixes
 - Adjustable stiffness, anchoring and height
-- Enhanced reverse driving camera
+- Enhanced reverse driving camera, with an adjustable delay before it swings
 - Every feature strength is a multiplier: `1` is the profile default, `0` turns
   it off, and any other value scales it (for example `CameraWobble = 2` doubles
   the steering lean, `0.5` halves it). `PitchTilt` takes optional
-  `PitchTiltUphill` / `PitchTiltDownhill` overrides, and `DynamicSpeedFOV` /
-  `VCSCamShake` take their own start-speed (and max-FOV) options.
+  `PitchTiltUphill` / `PitchTiltDownhill` overrides plus `PitchTiltMinAngle`
+  (degrees) and the `PitchTiltAirHoldTime` / `PitchTiltAirBlendTime` airborne
+  timings; `TrafficCamWobble` takes `TrafficCamWobbleMinSpeed` /
+  `TrafficCamWobbleFullSpeed` / `TrafficCamWobbleMaxMultiplier`;
+  `ReverseCamera` takes `ReverseCameraDelay`; `HeadingFollow` scales how eagerly
+  the SA follow camera swings in behind the car (lower holds the view longer,
+  handy for custom profiles); and `DynamicSpeedFOV` / `VCSCamShake` take their
+  own start-speed (and max-FOV / decay) options.
 - The `[Offsets]` category moves the camera offsets out of the profile so they
   apply to every profile: `CameraHeightOffset`, `CameraLateralOffset`,
   `CameraDistanceOffset`, `CameraMinDistance`, `CameraDistanceScale` and

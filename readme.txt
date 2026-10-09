@@ -5,7 +5,12 @@ A modern vehicle camera for GTA III, GTA Vice City and GTA San Andreas.
 The default settings reproduce each game's own vehicle camera; optional extras
 (steering wobble, elastic string physics, terrain tilt, dynamic speed FOV, VCS
 camera shake, reverse look-behind, free look, modern drive-by aiming) are layered
-on top and are all configurable in III.VC.SA.ModernCarCam.ini.
+on top and are all configurable in III.VC.SA.ModernCarCam.ini. Terrain tilt has a
+minimum-slope dead-zone (and a predictable in-air behaviour), the passing-traffic
+nudge is one short speed-scaled impulse, and the reverse camera waits a
+configurable delay before swinging. The IV profile uses dynamic FOV and, on
+GTA III, a softer camera heading follow (the `HeadingFollow` option, handy for
+custom profiles too).
 
 Install
 -------
