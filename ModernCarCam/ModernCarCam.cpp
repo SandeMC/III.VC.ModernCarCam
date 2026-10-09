@@ -35,7 +35,7 @@
 HMODULE dllModule, hDummyHandle;
 int gtaversion = -1;
 
-// Reminder: isVC() will also return true for Re:LCS
+// isVC() also returns true for Re:LCS.
 bool isReLCS = false;
 
 int debugMenuLoaded = 0; // 1: not installed 2: installed
@@ -165,19 +165,22 @@ void registerDebugMenu() {
 		if (DebugMenuLoad()) {
 			DebugMenuAddInt8("ModernCarCam", "Camera profile", (int8_t*)&cameraProfile, onMasterProfileChange, 1, 0, 8, profileNames);
 
-			DebugMenuAddVarBool8("ModernCarCam", "Camera wobble", (int8*)&cameraWobble, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "Elastic string physics", (int8*)&elasticStringPhysics, nil);
-			DebugMenuAddInt8("ModernCarCam", "Pitch slope tilt", (int8_t*)&pitchTilt, nil, 1, 0, 3, pitchTiltNames);
-			DebugMenuAddVarBool8("ModernCarCam", "Dynamic speed FOV", (int8*)&dynamicSpeedFOV, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "VCS camera shake", (int8*)&vcsCamShake, nil);
-			DebugMenuAddInt8("ModernCarCam", "Camera anchoring", (int8_t*)&cameraAnchoring, nil, 1, 0, 2, anchoringNames);
-			DebugMenuAddVarBool8("ModernCarCam", "Vehicle-specific zoom", (int8*)&vehicleSpecificZoom, nil);
+			DebugMenuAddVar("ModernCarCam", "Camera wobble (x)", &cameraWobble, nil, 0.1f, 0.0f, 5.0f);
+			DebugMenuAddVar("ModernCarCam", "Elastic string (x)", &elasticStringPhysics, nil, 0.1f, 0.0f, 5.0f);
+			DebugMenuAddVar("ModernCarCam", "Pitch slope tilt (x)", &pitchTilt, nil, 0.1f, 0.0f, 5.0f);
+			DebugMenuAddVar("ModernCarCam", "Dynamic speed FOV (x)", &dynamicSpeedFOV, nil, 0.1f, 0.0f, 5.0f);
+			DebugMenuAddVar("ModernCarCam", "VCS camera shake (x)", &vcsCamShake, nil, 0.1f, 0.0f, 5.0f);
+			DebugMenuAddVar("ModernCarCam", "Camera anchoring (x)", &cameraAnchoring, nil, 0.1f, 0.0f, 5.0f);
+			DebugMenuAddVar("ModernCarCam", "Vehicle-specific zoom (x)", &vehicleSpecificZoom, nil, 0.1f, 0.0f, 5.0f);
 			DebugMenuAddVarBool8("ModernCarCam", "Modern turret control", (int8*)&modernTurretControl, nil);
 			DebugMenuAddVarBool8("ModernCarCam", "Modern drive-by", (int8*)&modernDriveBy, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Lock shot dir (KBM)", (int8*)&lockShootDirKBM, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Lock shot dir (pad)", (int8*)&lockShootDirJOY, nil);
 			DebugMenuAddVarBool8("ModernCarCam", "Mouse free-look", (int8*)&mouseFreeLook, nil);
 			DebugMenuAddVarBool8("ModernCarCam", "SA bikes cam raise with passenger", (int8*)&heightIncreaseOnBike, nil);
 			DebugMenuAddVarBool8("ModernCarCam", "Fix Camera clipping through the model bug", (int8*)&fixTheBug, nil);
 			DebugMenuAddVarBool8("ModernCarCam", "Don't keep camera over water", (int8*)&seeUnderwater, nil);
+			DebugMenuAddVarBool8("ModernCarCam", "Smooth side view", (int8*)&smoothSideView, nil);
 			debugMenuLoaded = 2;
 		} else
 			debugMenuLoaded = 1;
@@ -259,8 +262,9 @@ namespace BetterDriveBy {
 }
 #pragma warning(pop)
 
-void
-CCamVC::GetVectorsReadyForRW(void)
+// Shared by all three cam classes: build the camera's Up vector from Front and
+// the roll angle. The classes differ only in their memory layout, not this maths.
+static void GetVectorsReadyForRW_Impl(CVector& Front, CVector& Up, float f_Roll)
 {
 	Front.Normalise();
 	if (Front.x == 0.0f && Front.y == 0.0f) {
@@ -280,50 +284,13 @@ CCamVC::GetVectorsReadyForRW(void)
 	Up.Normalise();
 }
 
-void
-CCamIII::GetVectorsReadyForRW(void)
-{
-	Front.Normalise();
-	if (Front.x == 0.0f && Front.y == 0.0f) {
-		Front.x = 0.0001f;
-		Front.y = 0.0001f;
-	}
-	CVector right = CrossProduct(Front, CVector(0.0f, 0.0f, 1.0f));
-	if (right.MagnitudeSqr() < 0.0001f)
-		right = CVector(1.0f, 0.0f, 0.0f);
-	else
-		right.Normalise();
+void CCamVC::GetVectorsReadyForRW(void) { GetVectorsReadyForRW_Impl(Front, Up, f_Roll); }
+void CCamIII::GetVectorsReadyForRW(void) { GetVectorsReadyForRW_Impl(Front, Up, f_Roll); }
+void CCamSA::GetVectorsReadyForRW(void) { GetVectorsReadyForRW_Impl(Front, Up, f_Roll); }
 
-	CVector up0 = CrossProduct(right, Front);
-	up0.Normalise();
-
-	Up = up0 * cosf(f_Roll) - right * sinf(f_Roll);
-	Up.Normalise();
-}
-
-void
-CCamSA::GetVectorsReadyForRW(void)
-{
-	Front.Normalise();
-	if (Front.x == 0.0f && Front.y == 0.0f) {
-		Front.x = 0.0001f;
-		Front.y = 0.0001f;
-	}
-	CVector right = CrossProduct(Front, CVector(0.0f, 0.0f, 1.0f));
-	if (right.MagnitudeSqr() < 0.0001f)
-		right = CVector(1.0f, 0.0f, 0.0f);
-	else
-		right.Normalise();
-
-	CVector up0 = CrossProduct(right, Front);
-	up0.Normalise();
-
-	Up = up0 * cosf(f_Roll) - right * sinf(f_Roll);
-	Up.Normalise();
-}
-
-// Needed for storing previous mode for some unknown alpha angle effect.
-// Credits goes to The Hero - aap for reversing it (comments are belong to him)
+// The active camera mode of the running game. Kept from the previous frame
+// because the alpha-angle correction needs to know which mode it came from
+// (reversed by The Hero - aap).
 #define currentMode (isSA() ? TheCameraSA->Cams[TheCameraSA->ActiveCam].Mode : \
 	(isIII() ? TheCameraIII->Cams[TheCameraIII->ActiveCam].Mode : TheCameraVC->Cams[TheCameraVC->ActiveCam].Mode))
 
@@ -430,6 +397,9 @@ DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 			InjectHook(0x459A54, &CCamIII::Process_FollowCar_SA_III, PATCH_NOTHING);
 			InjectHook(0x459B36, &CCamIII::Process_FollowCar_SA_III, PATCH_NOTHING);
 
+			// Smooth the game's own look behind/left/right when SmoothSideView is on.
+			InitVanillaLookHooks(false, true);
+
 			// Prevent game from overwriting cam->FOV to 70.0f every frame (allows dynamic FOV and custom base FOV)
 			Nop(0x45b52e, 10);
 
@@ -453,6 +423,9 @@ DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 			InjectHook(0x483B3B, &CCamVC::Process_FollowCar_SA_VC, PATCH_NOTHING);
 			InjectHook(0x483B79, &CCamVC::Process_FollowCar_SA_VC, PATCH_NOTHING);
 			InjectHook(0x483C3C, &CCamVC::Process_FollowCar_SA_VC, PATCH_NOTHING);
+
+			// Smooth the game's own look behind/left/right when SmoothSideView is on.
+			InitVanillaLookHooks(true, false);
 
 			// Prevent game from overwriting cam->FOV to 70.0f every frame (allows dynamic FOV and custom base FOV)
 			Nop(0x47fb22, 10);
@@ -495,6 +468,12 @@ DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 			// function also removes SA's per-frame "cam->FOV = 70.0f" write at
 			// 0x524BE4, so dynamic/custom FOV works without a separate NOP.
 			InjectHook(0x5245B0, &CCamSA::Process_FollowCar_SA_SA, PATCH_JUMP);
+
+			// Drive-by: CCam::Process clears Cams[ActiveCam].LookingBehind/Left/
+			// Right at 0x527DC9 (right after our engine runs) and SA's native look
+			// -- which we suppress via gCameraDirection -- is what normally sets
+			// them again. Our engine publishes those flags, so stop the clear.
+			Nop(0x527DC9, 12);
 
 			// Note: the III/VC BetterDriveBy and FakeCarGun(UpDown/LeftRight)
 			// hooks are not installed on SA; those address/pad-internals differ.

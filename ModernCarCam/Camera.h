@@ -1,10 +1,13 @@
 #pragma once
 #include "GTA.h"
 
-// Many, many thanks to GTAForums community and re3 project, all of these headers are taken from there.
+// The camera memory layouts in this file are reconstructed from the GTAForums
+// community and the re3 project; see licenses/re3.txt for attribution.
 
+// Number of previous camera vectors kept for averaging.
 #define NUMBER_OF_VECTORS_FOR_AVERAGE 2
 
+// Camera modes used by CCam::Mode.
 enum
 {
 	MODE_TOPDOWN1 = 1,
@@ -53,22 +56,23 @@ enum
 	MODE_M16FIRSTPERSON_44
 };
 
+// Vice City per-camera state; one entry for each CCameraVC::Cams slot.
 class CCamVC {
 public:
-	bool    bBelowMinDist; //used for follow ped mode
-	bool    bBehindPlayerDesired; //used for follow ped mode
+	bool    bBelowMinDist; // True when the follow ped camera is closer than its minimum distance.
+	bool    bBehindPlayerDesired; // True when the follow ped camera wants to sit behind the player.
 	bool    m_bCamLookingAtVector;
 	bool    m_bCollisionChecksOn;
-	bool    m_bFixingBeta; //used for camera on a string
+	bool    m_bFixingBeta; // True when the camera on a string is fixing its beta.
 	bool    m_bTheHeightFixerVehicleIsATrain;
 	bool    LookBehindCamWasInFront;
 	bool    LookingBehind;
 	bool    LookingLeft; // 32
 	bool    LookingRight;
-	bool    ResetStatics; //for interpolation type stuff to work
+	bool    ResetStatics; // True when the interpolation statics should be reset.
 	bool    Rotating;
 
-	short   Mode;                   // CameraMode
+	short   Mode;                   // Camera mode (see the MODE_* enum).
 	unsigned int  m_uiFinishTime; // 52
 
 	int     m_iDoCollisionChecksOnFrameNum;
@@ -78,9 +82,9 @@ public:
 	int     m_iRunningVectorCounter;
 	int     DirectionWasLooking;
 
-	float   f_max_role_angle; //=DEGTORAD(5.0f);    
-	float   f_Roll; //used for adding a slight roll to the camera in the
-	float   f_rollSpeed; //camera on a string mode
+	float   f_max_role_angle; // Maximum roll angle (5 degrees).
+	float   f_Roll; // Camera roll, used to add a slight lean in camera on a string mode.
+	float   f_rollSpeed; // Roll speed, used to add a slight lean in camera on a string mode.
 	float   m_fSyphonModeTargetZOffSet;
 	float   m_fAmountFractionObscured;
 	float   m_fAlphaSpeedOverOneFrame; // 100
@@ -101,7 +105,7 @@ public:
 	float   m_fPedBetweenCameraHeightOffset;
 	float   m_fPlayerInFrontSyphonAngleOffSet; // 164
 	float   m_fRadiusForDead;
-	float   m_fRealGroundDist; //used for follow ped mode
+	float   m_fRealGroundDist; // Real ground distance, used by follow ped mode.
 	float   m_fTargetBeta;
 	float   m_fTimeElapsedFloat;
 	float   m_fTilt;
@@ -110,7 +114,7 @@ public:
 	float   m_fTransitionBeta;
 	float   m_fTrueBeta;
 	float   m_fTrueAlpha; // 200
-	float   m_fInitialPlayerOrientation; //used for first person
+	float   m_fInitialPlayerOrientation; // Player orientation captured when first person starts.
 
 	float   Alpha;
 	float   AlphaSpeed;
@@ -124,11 +128,11 @@ public:
 	float   CA_MAX_DISTANCE;
 	float   SpeedVar;
 
-	// ped onfoot zoom distance
+	// Zoom distances used by the on-foot ped camera.
 	float m_fTargetZoomGroundOne;
 	float m_fTargetZoomGroundTwo; // 256
 	float m_fTargetZoomGroundThree;
-	// ped onfoot alpha angle offset
+	// Alpha angle offsets used by the on-foot ped camera at each zoom level.
 	float m_fTargetZoomOneZExtra;
 	float m_fTargetZoomTwoZExtra;
 	float m_fTargetZoomThreeZExtra;
@@ -145,46 +149,47 @@ public:
 	CVector m_cvecCamFixedModeVector; // 372
 	CVector m_cvecCamFixedModeSource; // 384
 	CVector m_cvecCamFixedModeUpOffSet; // 396
-	CVector m_vecLastAboveWaterCamPosition; //408  //helper for when the player has gone under the water
+	CVector m_vecLastAboveWaterCamPosition; // 408: last camera position above water, used when the player goes underwater.
 
 	CVector m_vecBufferedPlayerBodyOffset; // 420
 
-	// The three vectors that determine this camera for this frame
-	CVector Front;  // 432                                              // Direction of looking in
-	CVector Source;                                                 // Coors in world space
+	// The three vectors that define this camera for the current frame.
+	CVector Front;  // 432: direction the camera is looking in.
+	CVector Source; // Camera position in world space.
 	CVector SourceBeforeLookBehind;
-	CVector Up;                                                     // Just that
-	CVector m_arrPreviousVectors[NUMBER_OF_VECTORS_FOR_AVERAGE];    // used to average stuff
+	CVector Up; // The camera's up vector.
+	CVector m_arrPreviousVectors[NUMBER_OF_VECTORS_FOR_AVERAGE]; // The last few camera vectors, averaged to smooth the view.
 	CEntity* CamTargetEntity;
 
 	float       m_fCameraDistance;
 	float       m_fIdealAlpha;
 	float       m_fPlayerVelocity;
-	CAutomobile* m_pLastCarEntered; // So interpolation works
-	CPed* m_pLastPedLookedAt;// So interpolation works 
+	CAutomobile* m_pLastCarEntered; // The last vehicle entered; kept so interpolation works.
+	CPed* m_pLastPedLookedAt; // The last ped looked at; kept so interpolation works.
 	bool        m_bFirstPersonRunAboutActive;
 
 	void GetVectorsReadyForRW(void);
 	void Process_FollowCar_SA_VC(const CVector&, float, float, float);
 };
 
+// GTA III per-camera state; one entry for each CCameraIII::Cams slot.
 class CCamIII
 {
 public:
-	bool    bBelowMinDist; //used for follow ped mode
-	bool    bBehindPlayerDesired; //used for follow ped mode
+	bool    bBelowMinDist; // True when the follow ped camera is closer than its minimum distance.
+	bool    bBehindPlayerDesired; // True when the follow ped camera wants to sit behind the player.
 	bool    m_bCamLookingAtVector;
 	bool    m_bCollisionChecksOn;
-	bool    m_bFixingBeta; //used for camera on a string
+	bool    m_bFixingBeta; // True when the camera on a string is fixing its beta.
 	bool    m_bTheHeightFixerVehicleIsATrain;
 	bool    LookBehindCamWasInFront;
 	bool    LookingBehind;
 	bool    LookingLeft; // 32
 	bool    LookingRight;
-	bool    ResetStatics; //for interpolation type stuff to work
+	bool    ResetStatics; // True when the interpolation statics should be reset.
 	bool    Rotating;
 
-	int16   Mode;                   // CameraMode
+	int16   Mode;                   // Camera mode (see the MODE_* enum).
 	uint32  m_uiFinishTime; // 52
 
 	int     m_iDoCollisionChecksOnFrameNum;
@@ -194,9 +199,9 @@ public:
 	int     m_iRunningVectorCounter;
 	int     DirectionWasLooking;
 
-	float   f_max_role_angle; //=DEGTORAD(5.0f);    
-	float   f_Roll; //used for adding a slight roll to the camera in the
-	float	f_rollSpeed;
+	float   f_max_role_angle; // Maximum roll angle (5 degrees).
+	float   f_Roll; // Camera roll, used to add a slight lean in camera on a string mode.
+	float	f_rollSpeed; // Roll speed, used to add a slight lean in camera on a string mode.
 	float   m_fSyphonModeTargetZOffSet;
 	float	m_fUnknownZOffSet;
 	float   m_fAmountFractionObscured;
@@ -218,14 +223,14 @@ public:
 	float   m_fPedBetweenCameraHeightOffset;
 	float   m_fPlayerInFrontSyphonAngleOffSet; // 164
 	float   m_fRadiusForDead;
-	float   m_fRealGroundDist; //used for follow ped mode
+	float   m_fRealGroundDist; // Real ground distance, used by follow ped mode.
 	float   m_fTargetBeta;
 	float   m_fTimeElapsedFloat;
 
 	float   m_fTransitionBeta;
 	float   m_fTrueBeta;
 	float   m_fTrueAlpha; // 200
-	float   m_fInitialPlayerOrientation; //used for first person
+	float   m_fInitialPlayerOrientation; // Player orientation captured when first person starts.
 
 	float   Alpha;
 	float   AlphaSpeed;
@@ -239,11 +244,11 @@ public:
 	float   CA_MAX_DISTANCE;
 	float   SpeedVar;
 
-	// ped onfoot zoom distance
+	// Zoom distances used by the on-foot ped camera.
 	float m_fTargetZoomGroundOne;
 	float m_fTargetZoomGroundTwo; // 256
 	float m_fTargetZoomGroundThree;
-	// ped onfoot alpha angle offset
+	// Alpha angle offsets used by the on-foot ped camera at each zoom level.
 	float m_fTargetZoomOneZExtra;
 	float m_fTargetZoomTwoZExtra;
 	float m_fTargetZoomThreeZExtra;
@@ -256,22 +261,22 @@ public:
 	CVector m_cvecCamFixedModeVector; // 372
 	CVector m_cvecCamFixedModeSource; // 384
 	CVector m_cvecCamFixedModeUpOffSet; // 396
-	CVector m_vecLastAboveWaterCamPosition; //408  //helper for when the player has gone under the water
+	CVector m_vecLastAboveWaterCamPosition; // 408: last camera position above water, used when the player goes underwater.
 	CVector m_vecBufferedPlayerBodyOffset; // 420
 
-	// The three vectors that determine this camera for this frame
-	CVector Front;  // 432                                              // Direction of looking in
-	CVector Source;                                                 // Coors in world space
+	// The three vectors that define this camera for the current frame.
+	CVector Front;  // 432: direction the camera is looking in.
+	CVector Source; // Camera position in world space.
 	CVector SourceBeforeLookBehind;
-	CVector Up;                                                     // Just that
-	CVector m_arrPreviousVectors[NUMBER_OF_VECTORS_FOR_AVERAGE];    // used to average stuff
+	CVector Up; // The camera's up vector.
+	CVector m_arrPreviousVectors[NUMBER_OF_VECTORS_FOR_AVERAGE]; // The last few camera vectors, averaged to smooth the view.
 	CEntity* CamTargetEntity;
 
 	float       m_fCameraDistance;
 	float       m_fIdealAlpha;
 	float       m_fPlayerVelocity;
-	CAutomobile* m_pLastCarEntered; // So interpolation works
-	CPed* m_pLastPedLookedAt;// So interpolation works 
+	CAutomobile* m_pLastCarEntered; // The last vehicle entered; kept so interpolation works.
+	CPed* m_pLastPedLookedAt; // The last ped looked at; kept so interpolation works.
 	bool        m_bFirstPersonRunAboutActive;
 
 	void GetVectorsReadyForRW(void);
@@ -279,11 +284,13 @@ public:
 };
 static_assert(sizeof(CCamIII) == 0x1A4, "CCam: wrong size");
 
+// Spline path data used by scripted camera paths.
 struct CCamPathSplines
 {
 	float m_arr_PathData[800];
 };
 
+// One node of a scripted train camera path.
 struct CTrainCamNode
 {
 	CVector m_cvecCamPosition;
@@ -294,6 +301,7 @@ struct CTrainCamNode
 	float m_fNearClip;
 };
 
+// A camera mode queued for later, with its duration and zoom limits.
 struct CQueuedMode
 {
 	int16 Mode;
@@ -302,6 +310,7 @@ struct CQueuedMode
 	int16 MaxZoom;
 };
 
+// Look directions; stored in CCam::DirectionWasLooking.
 enum
 {
 	LOOKING_BEHIND,
@@ -312,29 +321,32 @@ enum
 
 enum
 {
-	// TODO: figure out
 	FADE_0,
-	FADE_1,	// mid fade
+	FADE_1,	// Mid fade.
 	FADE_2,
 
 	FADE_OUT = 0,
 	FADE_IN,
 };
 
+// Motion-blur presets. The intro presets are named after the cutscene they were
+// authored for.
 enum
 {
 	MBLUR_NONE,
 	MBLUR_SNIPER,
 	MBLUR_NORMAL,
-	MBLUR_INTRO1,		// green camera
-	MBLUR_INTRO2,		// unused
-	MBLUR_INTRO3,		// bank scene
-	MBLUR_INTRO4,		// jail break scene
-	MBLUR_INTRO5,		// explosion
-	MBLUR_INTRO6,		// player shot
-	MBLUR_UNUSED,		// pinkish
+	MBLUR_INTRO1,		// Used by the intro's green camera.
+	MBLUR_INTRO2,		// Unused.
+	MBLUR_INTRO3,		// Used by the bank scene.
+	MBLUR_INTRO4,		// Used by the jail break scene.
+	MBLUR_INTRO5,		// Used by the explosion.
+	MBLUR_INTRO6,		// Used by the player being shot.
+	MBLUR_UNUSED,		// Unused, pinkish tint.
 };
 
+// Vice City CCamera singleton layout; the mod reads and writes the fields it
+// needs.
 struct CCameraVC : public CPlaceableVC
 {
 	bool    m_bAboveGroundTrainNodesLoaded;
@@ -344,7 +356,7 @@ struct CCameraVC : public CPlaceableVC
 	bool    m_bCameraJustRestored;
 	bool    m_bcutsceneFinished;
 	bool    m_bCullZoneChecksOn;
-	bool    m_bFirstPersonBeingUsed; // To indicate if the m_bFirstPersonBeingUsed viewer is being used.
+	bool    m_bFirstPersonBeingUsed; // True while the first person camera is in use.
 	bool    m_bJustJumpedOutOf1stPersonBecauseOfTarget;
 	bool    m_bIdleOn;
 	bool    m_bInATunnelAndABigVehicle;
@@ -354,8 +366,8 @@ struct CCameraVC : public CPlaceableVC
 	bool    m_bPlayerIsInGarage;
 	bool    m_bPlayerWasOnBike;
 	bool    m_bJustCameOutOfGarage;
-	bool    m_bJustInitalised;	//Just so the speed thingy doesn't go mad right at the start
-	bool	m_bJust_Switched;	//Variable to indicate that we have jumped somewhere
+	bool    m_bJustInitalised;	// True on the first frame, so the speed buffer does not spike at startup.
+	bool	m_bJust_Switched;	// True when the camera has just jumped to a new position.
 	bool    m_bLookingAtPlayer;
 	bool    m_bLookingAtVector;
 	bool    m_bMoveCamToAvoidGeom;
@@ -365,14 +377,14 @@ struct CCameraVC : public CPlaceableVC
 	bool    m_bUseNearClipScript;
 	bool    m_bStartInterScript;
 	bool	m_bStartingSpline;
-	bool    m_bTargetJustBeenOnTrain;	//this variable is needed to be able to restore the camera
+	bool    m_bTargetJustBeenOnTrain;	// True when the target just boarded a train, needed to restore the camera.
 	bool    m_bTargetJustCameOffTrain;
 	bool    m_bUseSpecialFovTrain;
 	bool    m_bUseTransitionBeta;
 	bool    m_bUseScriptZoomValuePed;
 	bool    m_bUseScriptZoomValueCar;
 	bool    m_bWaitForInterpolToFinish;
-	bool    m_bItsOkToLookJustAtThePlayer;	 //Used when interpolating
+	bool    m_bItsOkToLookJustAtThePlayer;	 // True when it is safe to look only at the player, used while interpolating.
 	bool    m_bWantsToSwitchWidescreenOff;
 	bool    m_WideScreenOn;
 	bool    m_1rstPersonRunCloseToAWall;
@@ -382,46 +394,46 @@ struct CCameraVC : public CPlaceableVC
 
 	bool    m_bAllow1rstPersonWeaponsCamera;
 	bool    m_bFailedCullZoneTestPreviously;
-	bool    m_FadeTargetIsSplashScreen;	//used as hack for fading 
-	bool    WorldViewerBeingUsed;	// To indicate if the world viewer is being used.                                      
+	bool    m_FadeTargetIsSplashScreen;	// True when the fade target is a splash screen; a fading special case.
+	bool    WorldViewerBeingUsed;	// True while the debug world viewer camera is in use.
 	unsigned char   ActiveCam;
 	uint8 somePad;
-	unsigned int    m_uiCamShakeStart;          // When did the camera shake start.
+	unsigned int    m_uiCamShakeStart;          // Time the camera shake started.
 	unsigned int    m_uiFirstPersonCamLastInputTime;
 	unsigned int    m_uiLongestTimeInMill;
 	unsigned int    m_uiNumberOfTrainCamNodes;
 
-	unsigned char     m_uiTransitionJUSTStarted;  // This is the first frame of a transition.
-	unsigned char     m_uiTransitionState;        // 0:one mode 1:transition
+	unsigned char     m_uiTransitionJUSTStarted;  // True on the first frame of a transition.
+	unsigned char     m_uiTransitionState;        // 0: a single mode; 1: a transition.
 	uint8 somePad2;
 	uint8 somePad3;
 	unsigned int    m_uiTimeLastChange;
 	unsigned int    m_uiTimeWeLeftIdle_StillNoInput;
 	unsigned int    m_uiTimeWeEnteredIdle;
-	unsigned int    m_uiTimeTransitionStart;    // When was the transition started ?
-	unsigned int    m_uiTransitionDuration;     // How long does the transition take ?
+	unsigned int    m_uiTimeTransitionStart;    // Time the transition started.
+	unsigned int    m_uiTransitionDuration;     // Duration of the transition.
 	unsigned int    m_uiTransitionDurationTargetCoors;
 	int     m_BlurBlue;
 	int     m_BlurGreen;
 	int     m_BlurRed;
 	int     m_BlurType;
 	int     m_iWorkOutSpeedThisNumFrames;
-	int     m_iNumFramesSoFar;				//counter
-	int     m_iCurrentTrainCamNode;			//variable indicating which camera node we are at for the train
-	int     m_motionBlur;					//to indicate that we are fading
+	int     m_iNumFramesSoFar;				// Frames counted so far.
+	int     m_iCurrentTrainCamNode;			// Index of the train camera node currently in use.
+	int     m_motionBlur;					// Active motion-blur preset (see the MBLUR_* enum).
 
 	int     m_imotionBlurAddAlpha;
 	int     m_iCheckCullZoneThisNumFrames;
 	int     m_iZoneCullFrameNumWereAt;
-	int     WhoIsInControlOfTheCamera;		//to discern between obbe and scripts
+	int     WhoIsInControlOfTheCamera;		// Whether the cinematic camera or a script controls the camera.
 	float   CamFrontXNorm, CamFrontYNorm;
-	float CarZoomIndicator; // m_nCarZoom in SA
-	float CarZoomValue;		// m_nCarZoomBase in SA
-	float CarZoomValueSmooth; // m_fCarZoomSmoothed in SA
+	float CarZoomIndicator; // Car zoom indicator (m_nCarZoom in SA).
+	float CarZoomValue;		// Base car zoom value (m_nCarZoomBase in SA).
+	float CarZoomValueSmooth; // Smoothed car zoom value (m_fCarZoomSmoothed in SA).
 	float   DistanceToWater;
 	float   FOVDuringInter;
-	float   LODDistMultiplier;				 // This takes into account the FOV and the standard LOD multiplier Smaller aperture->bigger LOD multipliers.
-	float   GenerationDistMultiplier;		// This takes into account the FOV but noy the standard LOD multiplier
+	float   LODDistMultiplier;				 // LOD distance multiplier derived from the FOV and the standard LOD multiplier; a smaller aperture gives a larger multiplier.
+	float   GenerationDistMultiplier;		// Generation distance multiplier derived from the FOV only.
 
 	float   m_fAlphaSpeedAtStartInter;
 	float   m_fAlphaWhenInterPol;
@@ -435,59 +447,55 @@ struct CCameraVC : public CPlaceableVC
 	float   m_fStartingAlphaForInterPol;
 	float   m_PedOrientForBehindOrInFront;
 
-	float   m_CameraAverageSpeed;		//this is an average depending on how many frames we work it out
-	float   m_CameraSpeedSoFar;		 //this is a running total
-	float   m_fCamShakeForce;			 // How severe is the camera shake.
-	float	m_fCarZoomValueScript; // m_fCarZoomValueScript in SA
+	float   m_CameraAverageSpeed;		// Average camera speed over the sampled frames.
+	float   m_CameraSpeedSoFar;		 // Running total of camera speed.
+	float   m_fCamShakeForce;			 // Strength of the current camera shake.
+	float	m_fCarZoomValueScript; // Scripted car zoom value (m_fCarZoomValueScript in SA).
 	float   m_fFovForTrain;
 	float   m_fFOV_Wide_Screen;
 	float   m_fNearClipScript;
-	float   m_fOldBetaDiff;						 // Needed for interpolation between 2 modes
+	float   m_fOldBetaDiff;						 // Previous beta difference, needed to interpolate between two modes.
 	float   m_fPedZoomValue;
 	float   m_fPedZoomValueSmooth;
 	float   m_fPedZoomValueScript;
-	float   m_fPositionAlongSpline;				//Variable used to indicate how far along the spline we are 0-1 for started to completed respectively
+	float   m_fPositionAlongSpline;				// Progress along the spline, 0 at the start and 1 at the end.
 	float   m_ScreenReductionPercentage;
 	float   m_ScreenReductionSpeed;
 	float   m_AlphaForPlayerAnim1rstPerson;
-	float   Orientation;            // The orientation of the camera. Used for peds walking.
+	float   Orientation;            // Camera orientation, used by peds walking.
 	float   PedZoomIndicator;
-	float   PlayerExhaustion;       // How tired is player (inaccurate sniping) 0.0f-1.0f
-									// The following things are used by the sound code to
-									// play reverb depending on the surroundings. From a point
-									// in front of the camera the disance is measured to the
-									// nearest obstacle (building)
-	float   SoundDistUp;			//, SoundDistLeft, SoundDistRight;     // These ones are buffered and should be used by the audio
-	float   SoundDistUpAsRead;		//, SoundDistLeftAsRead, SoundDistRightAsRead;
-	float   SoundDistUpAsReadOld;	 //, SoundDistLeftAsReadOld, SoundDistRightAsReadOld;
-									 // Very rough distance to the nearest water for the sound to use
-								  // Front vector X&Y normalised to 1. Used by loads of stuff.
+	float   PlayerExhaustion;       // Player tiredness from 0.0 to 1.0, used for inaccurate sniping.
+									// The fields below feed the sound code, which plays reverb based on the
+									// surroundings. The distance from a point in front of the camera to the
+									// nearest obstacle (a building) is measured for this purpose.
+	float   SoundDistUp; // Buffered distance to the obstacle above the camera; the left and right variants are omitted here.
+	float   SoundDistUpAsRead; // Distance above the camera as read by the audio code.
+	float   SoundDistUpAsReadOld; // Previous frame's distance above the camera as read by the audio code.
+									 // Very rough distance to the nearest water, for the audio code.
+								  // Front vector X and Y components, normalised to length 1.
 
 
 	float   m_fAvoidTheGeometryProbsTimer;
 	short   m_nAvoidTheGeometryProbsDirn;
 
-	float   m_fWideScreenReductionAmount;	//0 for not reduced 1 for fully reduced (Variable for Les)
+	float   m_fWideScreenReductionAmount;	// Widescreen reduction amount, 0 for none and 1 for fully reduced.
 	float   m_fStartingFOVForInterPol;
 
-	CCamVC Cams[3];                // The actual cameras (usually only one of the two is active)
-								 // And to complicate this we have a third camera, this camera is 
-								 // used for debugging when we want to have a look at the world.
-								 // We can't change the camera mode because other objects depend on their
+	// The camera instances; usually only one or two are active. The third is
+	// used for debugging, to look at the world, and its mode cannot be changed
+	// because other objects depend on it.
+	CCamVC Cams[3];
 
 	void* pToGarageWeAreIn;
 	void* pToGarageWeAreInForHackAvoidFirstPerson;
 	CQueuedMode m_PlayerMode;
 
-	// The higher priority player camera mode. This one is used
-	// for the sniper mode and rocket launcher mode.
-	// This one overwrites the m_PlayerMode above.
+	// The higher-priority player camera mode, used for the sniper and rocket
+	// launcher modes; it overrides m_PlayerMode above.
 	CQueuedMode PlayerWeaponMode;
-	CVector m_PreviousCameraPosition;		//needed to work out speed
-	CVector m_RealPreviousCameraPosition;	// This cane be used by stuff outside the camera code. The one above is the same as the current coordinates outwidth the camera code.
-											 // an active camera for range finding etc
-	CVector m_cvecAimingTargetCoors;        // Coors to look at with Gordons aiming thing
-											// The player camera that is waiting to be used
+	CVector m_PreviousCameraPosition;		// Previous camera position, used to work out speed.
+	CVector m_RealPreviousCameraPosition;	// Previous camera position visible to code outside the camera module; unlike m_PreviousCameraPosition it matches the current coordinates and can be used by an active camera for range finding.
+	CVector m_cvecAimingTargetCoors;        // Target position the camera aims at.
 
 
 	CVector m_vecFixedModeVector;
@@ -508,14 +516,14 @@ struct CCameraVC : public CPlaceableVC
 	CVector m_vecGameCamPos;
 
 	CVector SourceDuringInter, TargetDuringInter, UpDuringInter;
-	// RenderWare camera pointer
+	// The RenderWare camera these vectors are applied to.
 	void* m_pRwCamera;
 
 	CEntity* pTargetEntity;
-	// removed the fields we don't use
 };
 extern CCameraVC *TheCameraVC;
 
+// GTA III CCamera singleton layout; the mod reads and writes the fields it needs.
 struct CCameraIII : public CPlaceable
 {
 	bool m_bAboveGroundTrainNodesLoaded;
@@ -565,15 +573,14 @@ struct CCameraIII : public CPlaceable
 	uint8 ActiveCam;
 	uint32 m_uiCamShakeStart;
 	uint32 m_uiFirstPersonCamLastInputTime;
-	// where are those?
-	//bool m_bVehicleSuspenHigh;
-	//bool m_bEnable1rstPersonCamCntrlsScript;
-	//bool m_bAllow1rstPersonWeaponsCamera;
+	// The VC layout also has m_bVehicleSuspenHigh,
+	// m_bEnable1rstPersonCamCntrlsScript and m_bAllow1rstPersonWeaponsCamera
+	// here; they are absent from the III layout.
 
 	uint32 m_uiLongestTimeInMill;
 	uint32 m_uiNumberOfTrainCamNodes;
 	uint8   m_uiTransitionJUSTStarted;
-	uint8   m_uiTransitionState;        // 0:one mode 1:transition
+	uint8   m_uiTransitionState;        // 0: a single mode; 1: a transition.
 
 	uint32 m_uiTimeLastChange;
 	uint32 m_uiTimeWeEnteredIdle;
@@ -598,9 +605,9 @@ struct CCameraIII : public CPlaceable
 
 	float CamFrontXNorm;
 	float CamFrontYNorm;
-	float CarZoomIndicator; // m_nCarZoom in SA
-	float CarZoomValue;		// m_nCarZoomBase in SA
-	float CarZoomValueSmooth; // m_fCarZoomSmoothed in SA
+	float CarZoomIndicator; // Car zoom indicator (m_nCarZoom in SA).
+	float CarZoomValue;		// Base car zoom value (m_nCarZoomBase in SA).
+	float CarZoomValueSmooth; // Smoothed car zoom value (m_fCarZoomSmoothed in SA).
 
 	float DistanceToWater;
 	float FOVDuringInter;
@@ -620,7 +627,7 @@ struct CCameraIII : public CPlaceable
 	float m_CameraAverageSpeed;
 	float m_CameraSpeedSoFar;
 	float m_fCamShakeForce;
-	float m_fCarZoomValueScript; // m_fCarZoomValueScript in SA
+	float m_fCarZoomValueScript; // Scripted car zoom value (m_fCarZoomValueScript in SA).
 	float m_fFovForTrain;
 	float m_fFOV_Wide_Screen;
 	float m_fNearClipScript;
@@ -642,9 +649,8 @@ struct CCameraIII : public CPlaceable
 	float m_fWideScreenReductionAmount;
 	float m_fStartingFOVForInterPol;
 
-	// not static yet
-	float m_fMouseAccelHorzntl;// acceleration multiplier for 1st person controls
-	float m_fMouseAccelVertical;// acceleration multiplier for 1st person controls
+	float m_fMouseAccelHorzntl; // Horizontal mouse acceleration multiplier for the first person camera.
+	float m_fMouseAccelVertical; // Vertical mouse acceleration multiplier for the first person camera.
 	float m_f3rdPersonCHairMultX;
 	float m_f3rdPersonCHairMultY;
 
@@ -662,7 +668,6 @@ struct CCameraIII : public CPlaceable
 	CVector m_vecFixedModeUpOffSet;
 	CVector m_vecCutSceneOffset;
 
-	// one of those has to go
 	CVector m_cvecStartingSourceForInterPol;
 	CVector m_cvecStartingTargetForInterPol;
 	CVector m_cvecStartingUpForInterPol;
@@ -672,7 +677,7 @@ struct CCameraIII : public CPlaceable
 	CVector m_vecSourceWhenInterPol;
 	CVector m_vecTargetWhenInterPol;
 	CVector m_vecUpWhenInterPol;
-	//CVector m_vecClearGeometryVec;
+	// The VC layout also has m_vecClearGeometryVec here; it is absent from III.
 
 	CVector m_vecGameCamPos;
 	CVector SourceDuringInter;
@@ -845,6 +850,8 @@ public:
 };
 static_assert(sizeof(CCamSA) == 0x238, "CCamSA: wrong size");
 
+// San Andreas CCamera singleton layout; padding keeps each named field at its
+// engine offset.
 struct CCameraSA : public CPlaceableSA
 {
 	uint8   _pad18[0x1A - 0x18];         // 0x18

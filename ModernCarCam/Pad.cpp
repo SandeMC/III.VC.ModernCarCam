@@ -3,8 +3,6 @@
 #include "Camera.h"
 #include "Pad.h"
 
-// These functions (which is commented out as of now) is belong to Fire_Head.
-
 // SA: CPad::Pads is at 0xB73458 and NewMouseControllerState at 0xB73418.
 CPad &pad0 = *AddressByVersion<CPad*>(0x6F0360, 0, 0, 0x7DBCB0, 0, 0, 0xB73458);
 CMouseControllerState &CPad::NewMouseControllerState = *AddressByVersion<CMouseControllerState*>(0x8809F0, 0, 0, 0x94D788, 0, 0, 0xB73418);
@@ -20,8 +18,6 @@ addr gcgudAddress = AddressByVersion<addr>(0x493070, 0, 0, 0x4AAF00, 0, 0, 0x53F
 addr gcgfAddress = AddressByVersion<addr>(0, 0, 0, 0x4AAA60, 0, 0, 0x53FF90);
 addr gsudAddress = AddressByVersion<addr>(0x492FF0, 0, 0, 0x4AAF50, 0, 0, 0x53FBD0);
 addr gslrAddress = AddressByVersion<addr>(0x492F70, 0, 0, 0x4AAFD0, 0, 0, 0x53FB80);
-addr lalrAddress = AddressByVersion<addr>(0x493F80, 0, 0, 0x4A9A80, 0, 0, 0x540BD0);
-addr laudAddress = AddressByVersion<addr>(0x494130, 0, 0, 0x4A98F0, 0, 0, 0x540CC0);
 
 WRAPPER bool CPad::GetLookBehindForCar(void) { EAXJMP(glcAddress); }
 WRAPPER bool CPad::GetLookBehindForPed(void) { EAXJMP(glpAddress); }
@@ -32,129 +28,3 @@ WRAPPER int16 CPad::GetCarGunUpDown(void) { EAXJMP(gcgudAddress); }
 WRAPPER bool CPad::GetCarGunFired(void) { EAXJMP(gcgfAddress); }
 WRAPPER int16 CPad::GetSteeringUpDown(void) { EAXJMP(gsudAddress); }
 WRAPPER int16 CPad::GetSteeringLeftRight(void) { EAXJMP(gslrAddress); }
-
-// Unused
-WRAPPER int16 CPad::LookAroundLeftRight(void) { EAXJMP(lalrAddress); }
-WRAPPER int16 CPad::LookAroundUpDown(void) { EAXJMP(laudAddress); }
-
-#if 0
-int16 CPad::GetSteeringUpDown(void)
-{
-	if (ArePlayerControlsDisabled())
-		return 0;
-
-	switch (Mode)
-	{
-	case 0:
-	case 2:
-	{
-		int16 axis = NewState.LeftStickY;
-		int16 dpad = (NewState.DPadUp - NewState.DPadDown) / 2;
-
-		if (fabs(axis) > fabs(dpad))
-			return axis;
-		else
-			return dpad;
-
-		break;
-	}
-
-	case 1:
-	case 3:
-	{
-		return NewState.LeftStickY;
-
-		break;
-	}
-	}
-
-	return 0;
-}
-
-int16 CPad::GetCarGunUpDown(void)
-{
-	if (ArePlayerControlsDisabled())
-		return 0;
-
-	switch (Mode)
-	{
-	case 0:
-	case 1:
-	case 2:
-	{
-		return NewState.RightStickY;
-
-		break;
-	}
-
-	case 3:
-	{
-		return (NewState.DPadUp - NewState.DPadDown) / 2;
-
-		break;
-	}
-	}
-
-	return 0;
-}
-
-int16 CPad::GetCarGunLeftRight(void)
-{
-	if (ArePlayerControlsDisabled())
-		return 0;
-
-	switch (Mode)
-	{
-	case 0:
-	case 1:
-	case 2:
-	{
-		return NewState.RightStickX;
-
-		break;
-	}
-
-	case 3:
-	{
-		return (NewState.DPadRight - NewState.DPadLeft) / 2;
-
-		break;
-	}
-	}
-
-	return 0;
-}
-
-bool CPad::GetLookLeft(void)
-{
-	if (ArePlayerControlsDisabled())
-		return false;
-
-	return !!(NewState.LeftShoulder2 && !NewState.RightShoulder2);
-}
-
-bool CPad::GetLookRight(void)
-{
-	if (ArePlayerControlsDisabled())
-		return false;
-
-	return !!(NewState.RightShoulder2 && !NewState.LeftShoulder2);
-}
-
-
-bool CPad::GetLookBehindForCar(void)
-{
-	if (ArePlayerControlsDisabled())
-		return false;
-
-	return !!(NewState.RightShoulder2 && NewState.LeftShoulder2);
-}
-
-bool CPad::GetLookBehindForPed(void)
-{
-	if (ArePlayerControlsDisabled())
-		return false;
-
-	return !!NewState.RightShock;
-}
-#endif

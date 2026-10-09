@@ -16,52 +16,58 @@ CameraProfileType distanceProfile = PROFILE_VANILLA;
 CameraProfileType fovProfile = PROFILE_VANILLA;
 CameraProfileType anglesProfile = PROFILE_VANILLA;
 
-// Feature and tuning state.
-bool cameraWobble = true;
-bool elasticStringPhysics = true;
-int  pitchTilt = 2;
-bool dynamicSpeedFOV = false;
-bool vcsCamShake = false;
-int  cameraAnchoring = 2;
-float cameraStiffness = -1.0f;
-bool vehicleSpecificZoom = true;
+// Feature and tuning state. Strength values are multipliers: 1.0 = the profile
+// default, 0.0 = off, other positive values scale the effect.
+float cameraWobble = 1.0f;
+float elasticStringPhysics = 0.0f;
+float pitchTilt = 0.0f;
+float pitchTiltUphill = -1.0f;
+float pitchTiltDownhill = -1.0f;
+float maxPitchAngle = -1.0f;
+float minPitchAngle = -1.0f;
+float dynamicSpeedFOV = 0.0f;
+float dynamicSpeedFOVStartSpeed = -1.0f;
+float dynamicSpeedFOVMaxFOV = -1.0f;
+float vcsCamShake = 0.0f;
+float vcsCamShakeStartSpeed = -1.0f;
+float cameraAnchoring = 1.0f;
+float cameraStiffness = 1.0f;
+float vehicleSpecificZoom = 1.0f;
+float trafficCamWobble = 0.0f;
+float cameraReturnSpeed = 1.0f;
+float cameraReturnTime = 0.5f;
 bool modernTurretControl = true;
 bool modernDriveBy = true;
+bool lockShootDirKBM = true;
+bool lockShootDirJOY = true;
 bool mouseFreeLook = true;
 bool heightIncreaseOnBike = true;
 bool fixTheBug = true;
-bool trafficCamWobble = true;
 bool reverseCam = true;
 bool seeUnderwater = false;
-float cameraLateralOffset = 0.0f;
-CVector cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
-float cameraDistanceScale = 1.0f;
 bool enhancedVC = false;
-float cameraHeight = 0.0f;
+// Smooth side view: true swings the look left/right/behind smoothly, false uses
+// the vanilla instant change.
+bool smoothSideView = false;
 
-// Custom profile parameters (loaded from [Custom] in the ini).
+// [Offsets] - applied independently of the selected profile.
+float cameraHeightOffset = 0.0f;
+float cameraLateralOffset = 0.0f;
+float cameraDistanceOffset = 0.0f;
+float cameraMinDistance = -1.0f;           // <0 = profile default
+float cameraDistanceScale = 1.0f;
+CVector cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
+
+// Custom profile shape (loaded from [Custom] in the ini).
 float customDistNear = 0.05f;
 float customDistMid = 1.9f;
 float customDistFar = 3.9f;
-float customDistOffset = 0.0f;
-float customMinDistance = 10.0f;
-float customCameraHeight = 0.0f;
 
 float customBaseFOV = 70.0f;
-float customDynamicFOVMax = 30.0f;
-float customDynamicFOVStartSpeed = 0.4f;
 
 float customAngleNear = -0.01f;
 float customAngleMid = 0.045f;
 float customAngleFar = 0.005f;
-float customMaxElevationAngle = 0.785398f;
-float customMinElevationAngle = 1.5533431f;
-float customLateralOffset = 0.0f;
-
-float customDistanceScale = 1.0f;
-float customDriverOffsetX = 0.0f;
-float customDriverOffsetY = 0.0f;
-float customDriverOffsetZ = 0.0f;
 
 // GInput state.
 IGInputPad* ginputPad;
@@ -136,61 +142,53 @@ void LoadSettings()
 	anglesProfile = ParseTableProfile(tableBuf, anglesProfile);
 
 	// The profile already chose the defaults. These ini keys are optional
-	// overrides: omit a key to keep the profile's value.
-	auto OverrideBool = [&](const char* key, bool& out) {
-		int val = GetPrivateProfileIntA("Features", key, -1, iniPath);
-		if (val != -1)
-			out = (val != 0);
-	};
-	auto OverrideInt = [&](const char* key, int& out, int lo, int hi) {
-		int val = GetPrivateProfileIntA("Features", key, INT_MIN, iniPath);
-		if (val != INT_MIN)
-			out = min(max(val, lo), hi);
-	};
-
+	// overrides: omit a key to keep the profile's value. Strength keys take a
+	// multiplier (1 = the profile default, 0 = off).
 	auto ReadFloat = [&](const char* sec, const char* key, float def) -> float {
 		char buf[32] = { 0 };
 		GetPrivateProfileStringA(sec, key, "", buf, sizeof(buf), iniPath);
 		return buf[0] ? (float)atof(buf) : def;
 	};
+	auto OverrideFloat = [&](const char* key, float& out) {
+		char buf[32] = { 0 };
+		GetPrivateProfileStringA("Features", key, "", buf, sizeof(buf), iniPath);
+		if (buf[0])
+			out = (float)atof(buf);
+	};
+	auto OverrideBool = [&](const char* key, bool& out) {
+		int val = GetPrivateProfileIntA("Features", key, -1, iniPath);
+		if (val != -1)
+			out = (val != 0);
+	};
 
-	// Custom profile parameters
+	// [Offsets] - applied on top of every profile, so they are additive (or
+	// multiplicative, for the scale) deltas rather than replacements.
+	cameraHeightOffset += ReadFloat("Offsets", "CameraHeightOffset", 0.0f);
+	cameraLateralOffset += ReadFloat("Offsets", "CameraLateralOffset", 0.0f);
+	cameraDistanceOffset += ReadFloat("Offsets", "CameraDistanceOffset", 0.0f);
+	cameraDistanceScale *= ReadFloat("Offsets", "CameraDistanceScale", 1.0f);
+	cameraDriverOffset += CVector(
+		ReadFloat("Offsets", "CameraDriverOffsetX", 0.0f),
+		ReadFloat("Offsets", "CameraDriverOffsetY", 0.0f),
+		ReadFloat("Offsets", "CameraDriverOffsetZ", 0.0f));
+	cameraMinDistance = ReadFloat("Offsets", "CameraMinDistance", -1.0f);
+
+	// [Custom] profile shape.
 	customDistNear = ReadFloat("Custom", "CustomDistanceNear", 0.05f);
 	customDistMid  = ReadFloat("Custom", "CustomDistanceMid", 1.9f);
 	customDistFar  = ReadFloat("Custom", "CustomDistanceFar", 3.9f);
-	customDistOffset = ReadFloat("Custom", "CustomDistanceOffset", 0.0f);
-	customMinDistance = ReadFloat("Custom", "CustomMinDistance", 10.0f);
-	customCameraHeight = ReadFloat("Custom", "CustomCameraHeight", 0.0f);
 
 	customBaseFOV = ReadFloat("Custom", "CustomBaseFOV", 70.0f);
-	customDynamicFOVMax = ReadFloat("Custom", "CustomMaxDynamicFOV", 30.0f);
-	customDynamicFOVStartSpeed = ReadFloat("Custom", "CustomDynamicFOVStartSpeed", 0.4f);
 
 	customAngleNear = ReadFloat("Custom", "CustomAngleNear", -0.01f);
 	customAngleMid  = ReadFloat("Custom", "CustomAngleMid", 0.045f);
 	customAngleFar  = ReadFloat("Custom", "CustomAngleFar", 0.005f);
-	customMaxElevationAngle = ReadFloat("Custom", "CustomMaxElevationAngle", 0.785398f);
-	customMinElevationAngle = ReadFloat("Custom", "CustomMinElevationAngle", 1.5533431f);
-	customLateralOffset = ReadFloat("Custom", "CustomLateralOffset", 0.0f);
-
-	customDistanceScale = ReadFloat("Custom", "CustomDistanceScale", 1.0f);
-	customDriverOffsetX = ReadFloat("Custom", "CustomDriverOffsetX", 0.0f);
-	customDriverOffsetY = ReadFloat("Custom", "CustomDriverOffsetY", 0.0f);
-	customDriverOffsetZ = ReadFloat("Custom", "CustomDriverOffsetZ", 0.0f);
-
-	// These offsets are only used by the Custom profile.
-	if (cameraProfile == PROFILE_CUSTOM_CAM) {
-		cameraLateralOffset = customLateralOffset;
-		cameraHeight = customCameraHeight;
-		cameraDistanceScale = customDistanceScale;
-		cameraDriverOffset = CVector(customDriverOffsetX, customDriverOffsetY, customDriverOffsetZ);
-	}
 
 	for (int i = 0; i < 8; i++) {
-		CARCAM_SET_CUSTOM[i][1] = customDistOffset;
-		CARCAM_SET_CUSTOM[i][4] = customMinDistance;
-		CARCAM_SET_CUSTOM[i][13] = customMaxElevationAngle;
-		CARCAM_SET_CUSTOM[i][14] = customMinElevationAngle;
+		CARCAM_SET_CUSTOM[i][1] = 0.0f; // distance offset now lives in [Offsets]
+		CARCAM_SET_CUSTOM[i][4] = 10.0f;
+		CARCAM_SET_CUSTOM[i][13] = 0.785398f;
+		CARCAM_SET_CUSTOM[i][14] = 1.5533431f;
 	}
 	for (int i = 0; i < 5; i++) {
 		CarZoomModesCustom[i] = customDistNear;
@@ -202,22 +200,33 @@ void LoadSettings()
 	}
 
 	// Optional feature overrides on top of the profile.
-	OverrideBool("CameraWobble", cameraWobble);
-	OverrideBool("ElasticStringPhysics", elasticStringPhysics);
-	OverrideInt("PitchTilt", pitchTilt, 0, 3);
-	OverrideBool("DynamicSpeedFOV", dynamicSpeedFOV);
-	OverrideBool("VCSCamShake", vcsCamShake);
-	OverrideInt("CameraAnchoring", cameraAnchoring, 0, 2);
-	cameraStiffness = ReadFloat("Features", "CameraStiffness", cameraStiffness);
-	OverrideBool("VehicleSpecificZoom", vehicleSpecificZoom);
+	OverrideFloat("CameraWobble", cameraWobble);
+	OverrideFloat("ElasticStringPhysics", elasticStringPhysics);
+	OverrideFloat("PitchTilt", pitchTilt);
+	OverrideFloat("PitchTiltUphill", pitchTiltUphill);
+	OverrideFloat("PitchTiltDownhill", pitchTiltDownhill);
+	OverrideFloat("MaxPitch", maxPitchAngle);
+	OverrideFloat("MinPitch", minPitchAngle);
+	OverrideFloat("DynamicSpeedFOV", dynamicSpeedFOV);
+	OverrideFloat("DynamicSpeedFOVStartSpeed", dynamicSpeedFOVStartSpeed);
+	OverrideFloat("DynamicSpeedFOVMaxFOV", dynamicSpeedFOVMaxFOV);
+	OverrideFloat("VCSCamShake", vcsCamShake);
+	OverrideFloat("VCSCamShakeStartSpeed", vcsCamShakeStartSpeed);
+	OverrideFloat("CameraAnchoring", cameraAnchoring);
+	OverrideFloat("CameraStiffness", cameraStiffness);
+	OverrideFloat("VehicleSpecificZoom", vehicleSpecificZoom);
+	OverrideFloat("TrafficCamWobble", trafficCamWobble);
+	OverrideFloat("CameraReturnSpeed", cameraReturnSpeed);
+	OverrideFloat("CameraReturnTime", cameraReturnTime);
 	OverrideBool("ModernTurretControl", modernTurretControl);
 	OverrideBool("ModernDriveBy", modernDriveBy);
+	OverrideBool("LockShootDirectionKBM", lockShootDirKBM);
+	OverrideBool("LockShootDirectionJOY", lockShootDirJOY);
 	OverrideBool("MouseFreeLook", mouseFreeLook);
 	OverrideBool("FixCameraClip", fixTheBug);
-	OverrideBool("TrafficCamWobble", trafficCamWobble);
 	OverrideBool("ReverseCamera", reverseCam);
 	OverrideBool("BikesHeightIncrease", heightIncreaseOnBike);
-	cameraHeight = ReadFloat("Features", "CameraHeight", cameraHeight);
+	OverrideBool("SmoothSideView", smoothSideView);
 
 	// Inverted relative to the internal "see underwater" flag.
 	int keepWater = GetPrivateProfileIntA("Features", "KeepCameraOverWater", -1, iniPath);
@@ -231,7 +240,7 @@ void LoadSettings()
 		distanceProfile = PROFILE_SA;
 		fovProfile = PROFILE_SA;
 		anglesProfile = PROFILE_SA;
-		cameraAnchoring = 0;
-		cameraStiffness = -1.0f;
+		cameraAnchoring = 0.0f;
+		cameraStiffness = 1.0f;
 	}
 }

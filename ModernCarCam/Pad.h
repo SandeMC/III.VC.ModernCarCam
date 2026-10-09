@@ -61,8 +61,6 @@ public:
 */
 	static CMouseControllerState &NewMouseControllerState;
 
-	int16 LookAroundUpDown(void);
-	int16 LookAroundLeftRight(void);
 	int16 GetSteeringUpDown(void);
 	int16 GetSteeringLeftRight(void);
 	int16 GetCarGunUpDown(void);
@@ -76,6 +74,5 @@ public:
 	int16 FakeCarGunUpDown(void);
 	int16 FakeCarGunLeftRight(void);
 };
-//static_assert(sizeof(CPad) == 0xFC, "CPad: this is broken as shit");
 
 extern CPad &pad0;

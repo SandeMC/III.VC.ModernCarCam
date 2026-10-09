@@ -31,6 +31,54 @@ constexpr float BoatMaxHeightUp = 15.0f;
 } // namespace
 
 // ---------------------------------------------------------------------------
+// Native look handling for III/VC.
+//
+// The game looks left/right/behind itself, in CCam::Process, by calling
+// CCam::LookBehind / LookLeft / LookRight while the bound key is held. With
+// smooth side view off that is left untouched. With it on, the mod's engine
+// (Process_Cam_On_A_String_Vanilla below) drives the look smoothly, so the
+// native look must not set the camera and is simply swallowed.
+// ---------------------------------------------------------------------------
+typedef void(__fastcall* VanillaLookFn)(void*);
+
+static VanillaLookFn gLookBehind = nullptr;
+static VanillaLookFn gLookLeft = nullptr;
+static VanillaLookFn gLookRight = nullptr;
+
+static void VanillaLook(void* camVoid, VanillaLookFn orig) {
+	if (!smoothSideView) {
+		if (orig)
+			orig(camVoid);
+		return;
+	}
+	// Smooth side view is on: the mod's engine owns the look, so ignore the
+	// native look (it would overwrite the smooth swing).
+	UNREFERENCED_PARAMETER(camVoid);
+}
+
+static void __fastcall HookLookBehind(void* cam) { VanillaLook(cam, gLookBehind); }
+static void __fastcall HookLookLeft(void* cam) { VanillaLook(cam, gLookLeft); }
+static void __fastcall HookLookRight(void* cam) { VanillaLook(cam, gLookRight); }
+
+void InitVanillaLookHooks(bool vc, bool iii) {
+    if (vc) {
+        gLookBehind = (VanillaLookFn)0x4851C7; // CCam::LookBehind (VC 1.0)
+        gLookLeft = (VanillaLookFn)0x484B00;   // CCam::LookLeft
+        gLookRight = (VanillaLookFn)0x4843E5;  // CCam::LookRight
+        InjectHook(0x483F92, &HookLookBehind, PATCH_NOTHING); // calls in CCam::Process
+        InjectHook(0x483FDA, &HookLookLeft, PATCH_NOTHING);
+        InjectHook(0x48400E, &HookLookRight, PATCH_NOTHING);
+    } else if (iii) {
+        gLookBehind = (VanillaLookFn)0x458600; // CCam::LookBehind (III 1.0)
+        gLookLeft = (VanillaLookFn)0x458C40;   // CCam::LookLeft
+        gLookRight = (VanillaLookFn)0x458FB0;  // CCam::LookRight
+        InjectHook(0x459E7C, &HookLookBehind, PATCH_NOTHING);
+        InjectHook(0x459EAC, &HookLookLeft, PATCH_NOTHING);
+        InjectHook(0x459EDC, &HookLookRight, PATCH_NOTHING);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Vanilla "behind boat" camera (CCam::Process_BehindBoat).
 // GTA III and Vice City share this implementation, so it is reproduced here
 // as part of the vanilla preset.
@@ -156,8 +204,6 @@ Process_BehindBoat_VC(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, 
 	const float WATER_Z_ADDITION = BoatWaterZAddition;
 	const float SMALLBOAT_CLOSE_ALPHA_MINUS = SmallBoatCloseAlphaMinus;
 
-	static float TargetWhenChecksWereOn = 0.0f;
-	static float CenterObscuredWhenChecksWereOn = 0.0f;
 	static float WaterLevelBuffered = 0.0f;
 	static float WaterLevelSpeed = 0.0f;
 
@@ -175,12 +221,8 @@ Process_BehindBoat_VC(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, 
 	cam->FOV = DefaultFOV;
 	float targetAlpha = 0.0f;
 
-	if (cam->ResetStatics) {
-		CenterObscuredWhenChecksWereOn = 0.0f;
-		TargetWhenChecksWereOn = 0.0f;
-	} else if (cam->DirectionWasLooking != LOOKING_FORWARD) {
+	if (!cam->ResetStatics && cam->DirectionWasLooking != LOOKING_FORWARD)
 		cam->Beta = TargetOrientation;
-	}
 
 	if (!CWaterLevel::GetWaterLevelNoWaves(TargetCoors.x, TargetCoors.y, TargetCoors.z, &WaterLevel))
 		WaterLevel = TargetCoors.z - 0.5f;
@@ -254,9 +296,9 @@ Process_BehindBoat_VC(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, 
 	cam->Front = TargetCoors - cam->Source;
 	cam->Front.Normalise();
 
-	// Steering roll (Vice City vanilla)
+	// Vice City vanilla steering roll.
 	float targetRoll = 0.0f;
-	if (cameraWobble) {
+	if (cameraWobble > 0.0f) {
 		float fwdSpeed = SpeedKphFactor * DotProduct(car->m_vecMoveSpeed, car->GetForward());
 		if (fwdSpeed > MaxForwardSpeed)
 			fwdSpeed = MaxForwardSpeed;
@@ -264,7 +306,7 @@ Process_BehindBoat_VC(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, 
 		CVector fwdTarget = car->GetForward();
 		fwdTarget.Normalise();
 		const float angleDiff = acosf(clamp(fabsf(DotProduct(fwdTarget, cam->Front)), 0.0f, 1.0f));
-		targetRoll = steer * (fwdSpeed / MaxForwardSpeed) * (DEGTORAD(10.0f) * TiltOverShoot[index] + cam->f_max_role_angle) * sinf(angleDiff);
+		targetRoll = steer * (fwdSpeed / MaxForwardSpeed) * (DEGTORAD(10.0f) * TiltOverShoot[index] + cam->f_max_role_angle) * sinf(angleDiff) * cameraWobble;
 	}
 	WellBufferMe(targetRoll, &cam->f_Roll, &cam->f_rollSpeed, 0.15f, 0.07f, false);
 
@@ -311,6 +353,8 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	const int index = isCar ? 0 : (isBike ? 1 : (isHeli ? 2 : (isPlane ? 3 : 4)));
 
 	ColModelClass* carCol = (ColModelClass*)car->GetColModel();
+	if (!carCol)
+		return; // collision model not loaded yet (e.g. a vehicle added at an unused ID)
 	CVector Dimensions = carCol->boundingBox.max - carCol->boundingBox.min;
 
 	const uint8 nextDirectionIsForward =
@@ -322,25 +366,29 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	// "CarSpeedDependantFOV" (Misc.ixx): expand the FOV with forward speed, decay
 	// it back at 0.98^dt and cap it 30 degrees over the base. MIT licensed, see
 	// licenses/WidescreenFixesPack.txt.
-	const float baseFOV = (fovProfile == PROFILE_CUSTOM) ? customBaseFOV : DefaultFOV;
-	const float maxFOVAdd = (fovProfile == PROFILE_CUSTOM) ? customDynamicFOVMax : 30.0f;
-	const float fovStartSpeed = (fovProfile == PROFILE_CUSTOM) ? customDynamicFOVStartSpeed : 0.4f;
+	float baseFOV = (fovProfile == PROFILE_CUSTOM) ? customBaseFOV : DefaultFOV;
+	float maxFOVAdd = 30.0f;
+	float fovStartSpeed = 0.4f;
+	if (dynamicSpeedFOVMaxFOV >= 0.0f)
+		maxFOVAdd = dynamicSpeedFOVMaxFOV;
+	if (dynamicSpeedFOVStartSpeed >= 0.0f)
+		fovStartSpeed = dynamicSpeedFOVStartSpeed;
 	if (cam->ResetStatics) {
 		cam->FOV = baseFOV;
-	} else if (dynamicSpeedFOV) {
+	} else if (dynamicSpeedFOV > 0.0f) {
 		float forwardSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
 		if (forwardSpeed > fovStartSpeed)
-			cam->FOV += (forwardSpeed - fovStartSpeed) * ms_fTimeStep;
+			cam->FOV += (forwardSpeed - fovStartSpeed) * ms_fTimeStep * dynamicSpeedFOV;
 		if (cam->FOV > baseFOV)
 			cam->FOV = powf(0.98f, ms_fTimeStep) * (cam->FOV - baseFOV) + baseFOV;
-		cam->FOV = clamp(cam->FOV, baseFOV, baseFOV + maxFOVAdd);
+		cam->FOV = clamp(cam->FOV, baseFOV, baseFOV + maxFOVAdd * dynamicSpeedFOV);
 	} else {
 		cam->FOV = baseFOV;
 	}
 
 	// ---- Target position and base distance ----
 	CVector TargetCoors = CameraTarget;
-	TargetCoors.z += cameraHeight;
+	TargetCoors.z += cameraHeightOffset;
 	float BaseDist = vc ? Dimensions.Magnitude() : Dimensions.Magnitude2D();
 	if (vc && isBike)
 		BaseDist *= 1.45f;
@@ -373,29 +421,35 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			zoomModes = CarZoomModesLCS;
 		else if (distanceProfile == PROFILE_CUSTOM)
 			zoomModes = CarZoomModesCustom;
-		else if (!vc && vehicleSpecificZoom)
+		else if (!vc && vehicleSpecificZoom > 0.0f)
 			zoomModes = CarZoomModesVC; // GTA III has no per-vehicle table; emulate Vice City's
 
 		if (zoomModes) {
+			// vehicleSpecificZoom blends the per-vehicle row (index) with the
+			// generic car row (0): 1 = full per-vehicle, 0 = generic.
+			float vsz = max(0.0f, vehicleSpecificZoom);
+			auto zm = [&](int row) {
+				return zoomModes[row] + (zoomModes[index + row] - zoomModes[row]) * vsz;
+			};
 			int ind = (int)TheCamera->CarZoomIndicator;
 			if (ind == 3)
-				zoomValue = zoomModes[index + 10];
+				zoomValue = zm(10);
 			else if (ind == 2)
-				zoomValue = zoomModes[index + 5] +
-					(zoomValue - 1.9f) * (zoomModes[index + 10] - zoomModes[index + 5]) / (3.9f - 1.9f);
+				zoomValue = zm(5) +
+					(zoomValue - 1.9f) * (zm(10) - zm(5)) / (3.9f - 1.9f);
 			else if (ind == 1)
-				zoomValue = zoomModes[index] +
-					(zoomValue - 0.05f) * (zoomModes[index + 5] - zoomModes[index]) / (1.9f - 0.05f);
-			if (zoomValue < zoomModes[index])
-				zoomValue = zoomModes[index];
+				zoomValue = zm(0) +
+					(zoomValue - 0.05f) * (zm(5) - zm(0)) / (1.9f - 0.05f);
+			if (zoomValue < zm(0))
+				zoomValue = zm(0);
 		}
 	}
 
 	// ---- Elastic string stretch (adds SA-style speed stretch on top) ----
 	float extraDist = 0.0f;
-	if (elasticStringPhysics && (isCar || isBike || car->IsBoat())) {
+	if (elasticStringPhysics > 0.0f && (isCar || isBike || car->IsBoat())) {
 		float forwardSpeed = DotProduct(car->m_vecMoveSpeed, car->GetForward()) * SpeedKphFactor;
-		extraDist += clamp(forwardSpeed * (2.0f / MaxForwardSpeed), -1.0f, 2.0f);
+		extraDist += clamp(forwardSpeed * (2.0f / MaxForwardSpeed), -1.0f, 2.0f) * elasticStringPhysics;
 	}
 
 	// ---- Vice City RC vehicles need extra distance / angle ----
@@ -410,9 +464,9 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		}
 	}
 
-	const float distOffset = (distanceProfile == PROFILE_CUSTOM) ? customDistOffset : 0.0f;
-	cam->CA_MAX_DISTANCE = BaseDist + 0.1f + zoomValue + extraDist + distOffset;
-	cam->CA_MIN_DISTANCE = min(BaseDist * 0.6f, 3.5f);
+	cam->CA_MAX_DISTANCE = BaseDist + 0.1f + zoomValue + extraDist + cameraDistanceOffset;
+	cam->CA_MIN_DISTANCE = (cameraMinDistance >= 0.0f) ? cameraMinDistance : min(BaseDist * 0.6f, 3.5f);
+	cam->CA_MAX_DISTANCE *= cameraDistanceScale;
 	if (cam->CA_MIN_DISTANCE > cam->CA_MAX_DISTANCE)
 		cam->CA_MIN_DISTANCE = cam->CA_MAX_DISTANCE - 0.05f;
 
@@ -443,21 +497,24 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		cam->Source.z = TargetCoors.z;
 	}
 
-	// ---- Looking behind / returning from looking around ----
-	if (pad->GetLookBehindForCar()) {
-		if (cam->DirectionWasLooking == LOOKING_FORWARD || !cam->LookingBehind)
-			TheCamera->m_bCamDirectlyInFront = true;
-	}
-	if (!(pad->GetLookBehindForCar() || pad->GetLookBehindForPed() || pad->GetLookLeft() || pad->GetLookRight())) {
-		if (cam->DirectionWasLooking != LOOKING_FORWARD)
-			TheCamera->m_bCamDirectlyBehind = true;
-	}
+	// ---- Look left / right / behind ----
+	// III/VC handle look in CCam::Process (CCam::LookBehind / LookLeft /
+	// LookRight), which run right after this function and set Source directly
+	// from the car position/heading. The mod must not move Beta here: LookBehind
+	// picks the direction from DeltaBeta = carHeading - Beta, and a front-facing
+	// Beta makes it latch LookBehindCamWasInFront and flip the camera back behind
+	// (which looked like "forwards"). So the mod leaves Beta alone and lets the
+	// game look; the vanilla string physics below bring the camera back.
 
 	// ---- Mouse free-look (ported from the San Andreas camera) ----
 	// The mouse is read before the camera direction is finalised. While the player
 	// is free-looking, Beta and Alpha are kept as state (exactly like the SA
 	// camera) so the vehicle's motion does not drag the view; the game re-takes
 	// control once the 50-step hold runs out.
+	// Pressing a look key must end any mouse hold immediately, otherwise the camera
+	// stays stuck at the mouse angle until the 50-step release finishes.
+	if (pad->GetLookBehindForCar() || pad->GetLookBehindForPed() || pad->GetLookLeft() || pad->GetLookRight())
+		stepsLeftToChangeBetaByMouse = 0.0f;
 	bool mouseChangesBeta = false;
 	float mouseXMovement = 0.0f;
 	float mouseYMovement = 0.0f;
@@ -625,15 +682,17 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		carAlpha = -carAlpha * cosf(deltaBeta);
 		const float length = (cam->Source - TargetCoors).Magnitude2D();
 
-		int effectivePitchTilt = pitchTilt;
-		if (effectivePitchTilt == 2)
-			effectivePitchTilt = vc ? 1 : 0;
+		// Slope tilt strengths: pitchTilt is the master; the uphill/downhill
+		// keys override it per direction (<0 = use the master value).
+		float tiltUphill = (pitchTiltUphill >= 0.0f) ? pitchTiltUphill : pitchTilt;
+		float tiltDownhill = (pitchTiltDownhill >= 0.0f) ? pitchTiltDownhill : pitchTilt;
+		bool tiltEnabled = tiltUphill > 0.0f || tiltDownhill > 0.0f;
 
 		if (vc) {
 			// Vice City: the Firetruck cannon pitches the camera while firing.
 			if (car->m_modelIndex == FireTruk && pad->GetCarGunFired()) {
 				carAlpha = DEGTORAD(10.0f);
-			} else if (isHeli && effectivePitchTilt != 0 && length != 0.0f) {
+			} else if (isHeli && tiltEnabled && length != 0.0f) {
 				carAlpha = 0.0f;
 				const float heliFwdSpeed = DotProduct(car->m_vecMoveSpeed, forward) * SpeedKphFactor;
 				const float heliFwdZ = forward.z;
@@ -654,12 +713,12 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 				}
 			}
 
-			if (effectivePitchTilt == 1)
-				carAlpha = clamp(carAlpha, 0.0f, DEGTORAD(89.0f));
-			else if (effectivePitchTilt == 3)
-				carAlpha = clamp(carAlpha, -0.35f, 0.35f);
-			else
-				carAlpha = 0.0f;
+			if (carAlpha > 0.0f) {
+				float hi = (tiltUphill > 0.0f) ? 0.35f : DEGTORAD(89.0f);
+				carAlpha = clamp(carAlpha, 0.0f, hi) * tiltDownhill;
+			} else {
+				carAlpha = clamp(carAlpha, -0.35f, 0.0f) * tiltUphill;
+			}
 
 			if (cam->ResetStatics)
 				cam->Alpha = carAlpha;
@@ -681,13 +740,14 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			float alphaSpeedStep = 0.015f;
 			bool camClear = true;
 
-			if (effectivePitchTilt == 0) {
+			if (!tiltEnabled) {
 				if (carAlpha < -0.01f)
 					carAlpha = -0.01f;
-			} else if (effectivePitchTilt == 1) {
-				carAlpha = clamp(carAlpha, 0.0f, DEGTORAD(89.0f));
+			} else if (carAlpha > 0.0f) {
+				float hi = (tiltUphill > 0.0f) ? 0.35f : DEGTORAD(89.0f);
+				carAlpha = clamp(carAlpha, 0.0f, hi) * tiltDownhill;
 			} else {
-				carAlpha = clamp(carAlpha, -0.35f, 0.35f);
+				carAlpha = clamp(carAlpha, -0.35f, 0.0f) * tiltUphill;
 			}
 
 			if (cam->ResetStatics)
@@ -805,8 +865,10 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		const float (*angleTable)[15] = (anglesProfile == PROFILE_CUSTOM) ? CARCAM_SET_CUSTOM :
 			((anglesProfile == PROFILE_VANILLA) ? CARCAM_SET_VANILLA :
 			((anglesProfile == PROFILE_LCS) ? CARCAM_SET_LCS : CARCAM_SET_SA));
-		const float maxElevation = min(angleTable[index][14], DEGTORAD(80.0f));
-		const float elevation = clamp(cam->Alpha + AlphaOffset, -angleTable[index][13], maxElevation);
+		const float maxElevationRaw = (minPitchAngle >= 0.0f) ? minPitchAngle : angleTable[index][14];
+		const float maxElevation = min(maxElevationRaw, DEGTORAD(80.0f));
+		const float downLimit = (maxPitchAngle >= 0.0f) ? maxPitchAngle : angleTable[index][13];
+		const float elevation = clamp(cam->Alpha + AlphaOffset, -downLimit, maxElevation);
 		cam->Alpha = elevation - AlphaOffset;
 
 		const float distance = cam->CA_MAX_DISTANCE;
@@ -836,7 +898,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	else if (!reverseCam) {
 		reverseLookActive = false;
 	}
-	else if (reverseTime > 1.0f) {
+	else if (reverseTime > 0.5f) {
 		reverseLookActive = true;
 	}
 	else if (reverseLookActive && reverseSpeed > 0.05f) {
@@ -846,7 +908,8 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	if (!reverseLookActive)
 		reverseBetaSpeed = 0.0f;
 
-	// ---- Rotate the camera behind the car when driving forward ----
+	// ---- Look (smooth side view) / rotate the camera behind the car ----
+	bool modLookActive = false;
 	{
 		const float maxDiffBeta = DEGTORAD(160.0f);
 		float forwardSpeed = reverseSpeed;
@@ -856,28 +919,85 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			cam->m_bFixingBeta = true;
 
 		bool setBeta = TheCamera->m_bCamDirectlyBehind || TheCamera->m_bCamDirectlyInFront || TheCamera->m_bUseTransitionBeta;
+		float stiffness = max(0.0f, cameraStiffness) * max(0.0f, cameraAnchoring);
 
-		if ((cam->m_bFixingBeta || setBeta) && !mouseChangesBeta && !reverseLookActive) {
-			float stiffness = (cameraStiffness >= 0.0f) ? cameraStiffness : 1.0f;
+		// Smooth side view on: the mod owns look left/right/behind and eases in
+		// and back out like the SA engine. Off: the game's native
+		// LookBehind/Left/Right is left untouched (see InitVanillaLookHooks).
+		const bool lookBehindHeld = pad->GetLookBehindForCar() || pad->GetLookBehindForPed();
+		const bool lookLeftHeld = pad->GetLookLeft();
+		const bool lookRightHeld = pad->GetLookRight();
+		const int lookNow = lookBehindHeld ? 1 : (lookLeftHeld ? 2 : (lookRightHeld ? 3 : 0));
+		static float modLookBetaSpeed = 0.0f;
+		static bool modLookReturning = false;
+		if (cam->ResetStatics) {
+			modLookBetaSpeed = 0.0f;
+			modLookReturning = false;
+		}
+		// If the player starts free-looking during the return, abandon the return
+		// immediately and let the mouse own Beta (otherwise the two fight until the
+		// return reaches the default).
+		if (mouseChangesBeta) {
+			modLookReturning = false;
+			modLookBetaSpeed = 0.0f;
+		}
+
+		modLookActive = smoothSideView && (lookNow != 0 || modLookReturning);
+		if (modLookActive) {
+			if (lookNow != 0)
+				modLookReturning = true;
+			// reVC's LookBehind/Left/Right place the camera at CA_MAX_DISTANCE in
+			// front/at the side of the car and look back at it. In this engine's
+			// Beta convention that position is at (reVC angle + PI).
+			float betaTarget = TargetOrientation;
+			if (lookNow == 1)
+				betaTarget = TargetOrientation + PI;     // behind: look from the front
+			else if (lookNow == 2)
+				betaTarget = TargetOrientation + HALFPI; // left
+			else if (lookNow == 3)
+				betaTarget = TargetOrientation - HALFPI; // right
+			// Short way from the current Beta (the engine re-wraps Beta each frame).
+			while (betaTarget < cam->Beta - PI) betaTarget += TWOPI;
+			while (betaTarget > cam->Beta + PI) betaTarget -= TWOPI;
+			WellBufferMe(betaTarget, &cam->Beta, &modLookBetaSpeed, 0.24f, 0.10f, true);
+			// Release to the engine's own handler while still a few degrees out
+			// (like SA). Do not force Beta onto the target here: that forced step
+			// was the ~5 degree jump on release; the auto-fix below finishes it.
+			if (lookNow == 0 && fabsf(LimitRadianAngle(cam->Beta - betaTarget)) < 0.02f) {
+				modLookReturning = false;
+				modLookBetaSpeed = 0.0f;
+				modLookActive = false;
+			}
+			// reVC uses CA_MAX_DISTANCE for the look, not the current string length.
+			const float lookDist = cam->CA_MAX_DISTANCE;
+			cam->Source.x = TargetCoors.x - cosf(cam->Beta) * lookDist;
+			cam->Source.y = TargetCoors.y - sinf(cam->Beta) * lookDist;
+			// Publish the look into the cam flags the drive-by reads (the native
+			// look would normally set these, but it is bypassed while smooth side
+			// view is on). Publish the aim only when this camera is the active one;
+			// a manual drive-by that has taken over the camera keeps its own aim.
+			const bool pedAimCamera = IsPedAimCameraMode(cam->Mode);
+			cam->LookingBehind = pedAimCamera ? false : (lookNow == 1);
+			cam->LookingLeft = pedAimCamera ? false : (lookNow == 2);
+			cam->LookingRight = pedAimCamera ? false : (lookNow == 3);
+		} else if ((cam->m_bFixingBeta || setBeta) && !mouseChangesBeta && !reverseLookActive && nextDirectionIsForward) {
 			WellBufferMe(TargetOrientation, &cam->Beta, &cam->BetaSpeed, 0.15f * stiffness, 0.007f * stiffness, true);
-
 			if (TheCamera->m_bCamDirectlyBehind)
 				cam->Beta = TargetOrientation;
 			if (TheCamera->m_bCamDirectlyInFront)
 				cam->Beta = TargetOrientation + PI;
 			if (TheCamera->m_bUseTransitionBeta)
 				cam->Beta = cam->m_fTransitionBeta;
-
 			float d2 = (cam->Source - TargetCoors).Magnitude2D();
 			if (d2 < 0.001f)
 				d2 = cam->CA_MAX_DISTANCE;
 			cam->Source.x = TargetCoors.x - cosf(cam->Beta) * d2;
 			cam->Source.y = TargetCoors.y - sinf(cam->Beta) * d2;
-
 			if (fabsf(LimitRadianAngle(TargetOrientation - cam->Beta)) < DEGTORAD(2.0f))
 				cam->m_bFixingBeta = false;
 		}
 	}
+
 	TheCamera->m_bCamDirectlyBehind = false;
 	TheCamera->m_bCamDirectlyInFront = false;
 
@@ -893,7 +1013,9 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	}
 
 	// ---- Keep the camera out of geometry ----
-	{
+	// Skipped during a mod-driven look: reVC's look already places the camera and
+	// the string engine's own pull would drag it in and warp the look angle.
+	if (!modLookActive) {
 		pIgnoreEntity = (CEntity*)car;
 		CColPoint colPoint;
 		CEntity* hitEntity = nil;
@@ -901,10 +1023,6 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			cam->Source = colPoint.point;
 		pIgnoreEntity = nil;
 	}
-
-	// A vehicle crossing the view used to push the camera up here, which read as
-	// the camera randomly jumping upwards in traffic. That lift is not wanted,
-	// so it is intentionally not applied.
 
 	// ---- Keep a little clearance above the ground and pull the near plane in ----
 	// Without this, resting the camera on the ground lets the near clip plane
@@ -933,10 +1051,11 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	// ---- VCS camera shake ----
 	// Ported from ThirteenAG's WidescreenFixesPack
 	// (MIT licensed, see licenses/WidescreenFixesPack.txt).
-	if (vcsCamShake && (isCar || isBike)) {
+	if (vcsCamShake > 0.0f && (isCar || isBike)) {
 		float vehSpeed = car->m_vecMoveSpeed.Magnitude();
-		if (vehSpeed > VCSCamShakeStartSpeed) {
-			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - VCSCamShakeStartSpeed) / VCSCamShakeRange / VCSCamShakeDivisor;
+		float shakeStart = (vcsCamShakeStartSpeed >= 0.0f) ? vcsCamShakeStartSpeed : VCSCamShakeStartSpeed;
+		if (vehSpeed > shakeStart) {
+			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake;
 			int r = rand();
 			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
 			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
@@ -945,14 +1064,16 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	}
 
 	// ---- Slight camera tilt when passing traffic very closely ----
+	// trafficCamWobble is a multiplier: 1.0 is the shipped gentle strength (70% of
+	// the raw amplitude), 0 = off.
 	float trafficWobbleTarget = 0.0f;
-	if (trafficCamWobble) {
+	if (trafficCamWobble > 0.0f) {
 		CEntity* nearEnt = WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false);
 		if (nearEnt) {
 			CVector side = CrossProduct(car->GetForward(), CVector(0.0f, 0.0f, 1.0f));
 			side.Normalise();
 			float lateral = DotProduct(nearEnt->GetPosition() - car->GetPosition(), side);
-			trafficWobbleTarget = clamp(lateral * 0.07f, -0.05f, 0.05f);
+			trafficWobbleTarget = clamp(lateral * 0.07f, -0.05f, 0.05f) * 0.7f * trafficCamWobble;
 		}
 	}
 
@@ -976,7 +1097,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		cam->Up.Normalise();
 	} else {
 		float targetRoll = 0.0f;
-		if (cameraWobble && !mouseChangesBeta) {
+		if (cameraWobble > 0.0f && !mouseChangesBeta) {
 			float fwdSpeed = SpeedKphFactor * DotProduct(car->m_vecMoveSpeed, car->GetForward());
 			if (fwdSpeed > MaxForwardSpeed)
 				fwdSpeed = MaxForwardSpeed;
@@ -987,7 +1108,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			float angleDiff = acosf(clamp(fabsf(DotProduct(fwdTarget, cam->Front)), 0.0f, 1.0f));
 
 			targetRoll = steer * (fwdSpeed / MaxForwardSpeed) *
-				(DEGTORAD(10.0f) * TiltOverShoot[index] + cam->f_max_role_angle) * sinf(angleDiff);
+				(DEGTORAD(10.0f) * TiltOverShoot[index] + cam->f_max_role_angle) * sinf(angleDiff) * cameraWobble;
 		}
 		targetRoll += trafficWobbleTarget;
 		WellBufferMe(targetRoll, &cam->f_Roll, &cam->f_rollSpeed, 0.15f, 0.07f, false);

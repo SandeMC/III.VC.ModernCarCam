@@ -59,7 +59,7 @@
 extern HMODULE dllModule;
 extern int gtaversion;
 
-// Reminder: isVC() also returns true for Re:LCS.
+// isVC() also returns true for Re:LCS.
 extern bool isReLCS;
 
 // ---------------------------------------------------------------------------
@@ -96,59 +96,64 @@ extern CameraProfileType distanceProfile;
 extern CameraProfileType fovProfile;
 extern CameraProfileType anglesProfile;
 
-// Feature and tuning state. applyProfile() sets the defaults for the selected
-// profile; LoadSettings() then applies any [Features] overrides.
-extern bool cameraWobble;
-extern bool elasticStringPhysics;
-extern int  pitchTilt; // 0 = disabled (authentic III), 1 = authentic VC (downhill only), 2 = match game (1 in VC, 0 in III), 3 = full symmetric tilt
-extern bool dynamicSpeedFOV;
-extern bool vcsCamShake;
-extern int  cameraAnchoring; // 0 = SA velocity follow, 1 = authentic III/VC rigid anchor, 2 = match profile
-extern float cameraStiffness; // -1: match profile (1.0 for Vanilla, 0.25 for SA, 0.4 for LCS)
-extern bool vehicleSpecificZoom;
+// Feature and tuning state. Every "effect strength" below is a multiplier:
+//   1.0  = the profile's default strength (the way the feature shipped before)
+//   0.0  = off
+//   other positive values scale the effect linearly (0.5 = half, 2 = double)
+// Negative values are treated as 0.
+// applyProfile() sets the defaults for the selected profile; LoadSettings()
+// then applies any [Features] overrides.
+extern float cameraWobble;
+extern float elasticStringPhysics;
+extern float pitchTilt;         // master strength for both slope directions
+extern float pitchTiltUphill;   // <0 = use the master value
+extern float pitchTiltDownhill; // <0 = use the master value
+extern float maxPitchAngle;     // <0 = profile default; camera pitch limits
+extern float minPitchAngle;     // <0 = profile default
+extern float dynamicSpeedFOV;
+extern float dynamicSpeedFOVStartSpeed; // <0 = profile default
+extern float dynamicSpeedFOVMaxFOV;     // <0 = profile default
+extern float vcsCamShake;
+extern float vcsCamShakeStartSpeed;     // <0 = profile default
+extern float cameraAnchoring;   // >0 = rigid anchor (scaled); 0 = SA float
+extern float cameraStiffness;   // multiplies the profile's default stiffness
+extern float vehicleSpecificZoom;
+extern float trafficCamWobble;
+extern float cameraReturnSpeed; // multiplier on the free-look auto-return rate
+extern float cameraReturnTime;  // seconds the free-look auto-return lasts
 extern bool modernTurretControl;
 extern bool modernDriveBy;
+extern bool lockShootDirKBM;   // modern drive-by: keep the shot direction while firing (keyboard/mouse)
+extern bool lockShootDirJOY;   // modern drive-by: keep the shot direction while firing (gamepad)
 extern bool mouseFreeLook;
 extern bool heightIncreaseOnBike;
 extern bool fixTheBug;
-extern bool trafficCamWobble;
 extern bool reverseCam;
 extern bool seeUnderwater;
-extern float cameraLateralOffset;          // side offset of the camera (Custom)
-extern CVector cameraDriverOffset;         // target offset, e.g. the IV driver seat
-extern float cameraDistanceScale;          // distance multiplier for the modern cameras
 extern bool enhancedVC;                    // Enhanced uses Vice City's features + camera angles even in GTA III
-extern float cameraHeight;                 // extra height in metres added to the camera target (Custom profile)
+extern bool smoothSideView;                 // smooth side view: look left/right/behind swings smoothly instead of the vanilla instant change
 
-// Custom profile parameters (loaded from [Custom] in the ini).
+// [Offsets] - camera offsets, applied independently of the selected profile.
+extern float cameraHeightOffset;           // extra height in metres added to the camera target
+extern float cameraLateralOffset;          // side offset of the camera
+extern float cameraDistanceOffset;         // extra distance in metres
+extern float cameraMinDistance;            // closest allowed distance
+extern float cameraDistanceScale;          // distance multiplier for the whole camera
+extern CVector cameraDriverOffset;         // target orbit offset, e.g. the IV driver seat
+
+// [Custom] profile shape. Only used when a *Profile selector is Custom.
 extern float customDistNear;
 extern float customDistMid;
 extern float customDistFar;
-extern float customDistOffset;
-extern float customMinDistance;
-extern float customCameraHeight;
 
 extern float customBaseFOV;
-extern float customDynamicFOVMax;
-extern float customDynamicFOVStartSpeed;
 
 extern float customAngleNear;
 extern float customAngleMid;
 extern float customAngleFar;
-extern float customMaxElevationAngle;
-extern float customMinElevationAngle;
-extern float customLateralOffset;
-
-// Custom camera shape: distance multiplier and driver-seat orbit offset.
-extern float customDistanceScale;
-extern float customDriverOffsetX;
-extern float customDriverOffsetY;
-extern float customDriverOffsetZ;
 
 // Debug-menu choice labels.
 extern const char *profileNames[];
-extern const char *anchoringNames[];
-extern const char *pitchTiltNames[];
 
 // ---------------------------------------------------------------------------
 // Per-game camera tables
@@ -248,12 +253,23 @@ extern bool lookingRelativelyRight;
 
 #define Tank (isIII() ? MI_III_RHINO : (isReLCS ? MI_RELCS_RHINO : MI_VC_RHINO))
 #define FireTruk (isIII() ? MI_III_FIRETRUCK : (isReLCS ? MI_RELCS_FIRETRUCK : MI_VC_FIRETRUCK))
+#define MI_SA_FIRETRUCK 407
+// Fire truck model for the running game (SA uses its own id).
+#define IsFireTruk(veh) ((veh)->m_modelIndex == (isSA() ? MI_SA_FIRETRUCK : FireTruk))
 #define CarWithHydraulics (isIII() ? MI_III_YARDIE : (isReLCS ? MI_RELCS_YARDIE : MI_VC_VOODOO))
 #define RcBandit (isIII() ? MI_III_RCBANDIT : (isReLCS ? MI_RELCS_RCBANDIT : MI_VC_RCBANDIT))
 
 // These are being used only if isVC() is true
 #define RcGoblin (isReLCS ? MI_RELCS_RCGOBLIN : MI_VC_RCGOBLIN)
 #define RcRaider (isReLCS ? MI_RELCS_RCRAIDER : MI_VC_RCRAIDER)
+
+// The III/VC manual drive-by mods take the camera over to an on-foot/aim mode
+// (CCamera::TakeControl) while the player aims from a vehicle. While one of those
+// cameras is active the vehicle camera is not, and the mod must leave the whole
+// camera and aim alone so it does not fight the manual drive-by.
+inline bool IsPedAimCameraMode(int mode) {
+	return mode == MODE_FOLLOWPED || mode == MODE_AIMING || mode == MODE_SNIPER;
+}
 
 #define DefaultFOV 70.0f
 #define DefaultNearClip 0.9f
@@ -269,7 +285,7 @@ constexpr float SpeedKphFactor = 180.0f;
 constexpr float VCSCamShakeStartSpeed = 0.65f;
 constexpr float VCSCamShakeFullSpeed = 1.0f;
 constexpr float VCSCamShakeRange = 0.35f;
-constexpr float VCSCamShakeDivisor = 200.0f;
+constexpr float VCSCamShakeDivisor = 400.0f;
 
 #define RwFrameGetMatrix(frame) (RwMatrix*)((addr)frame + 0x10)
 #define GetVehicleComponent(car, comp) *(void**)((addr)car + (isIII() ? 0x37C : 0x394) + comp*4) // In CAutomobile. normally returns RwFrame*
@@ -437,6 +453,7 @@ void LoadSettings();
 void OnGInputSettingsReload();
 void registerDebugMenu();
 void onMasterProfileChange(void);
+void InitVanillaLookHooks(bool vc, bool iii);   // smooths the III/VC native look when SmoothSideView is on
 
 // ---------------------------------------------------------------------------
 // Camera engine entry points

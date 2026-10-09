@@ -138,28 +138,47 @@ void applyProfile(ModernProfile profile, bool vc) {
 	anglesProfile = masterProfile;
 
 	// Game-matched baseline: reproduce the running game and only add the free
-	// camera, free turret control and fixes.
-	cameraWobble = vc;             // VC has steering roll, III does not
-	elasticStringPhysics = false;
-	pitchTilt = 2;                  // match game
-	dynamicSpeedFOV = false;        // not native to III/VC
-	vcsCamShake = false;
-	cameraAnchoring = 2;            // match profile
-	cameraStiffness = -1.0f;
-	vehicleSpecificZoom = vc;
+	// camera, free turret control and fixes. Every strength is a multiplier:
+	// 1.0 = the profile default, 0.0 = off.
+	cameraWobble = vc ? 1.0f : 0.0f;  // VC has steering roll, III does not
+	elasticStringPhysics = 0.0f;
+	pitchTilt = 0.0f;                  // master: off unless the profile turns it on
+	pitchTiltUphill = -1.0f;           // <0 = use the master value
+	pitchTiltDownhill = -1.0f;
+	dynamicSpeedFOV = 0.0f;            // not native to III/VC
+	dynamicSpeedFOVStartSpeed = -1.0f; // <0 = profile default
+	dynamicSpeedFOVMaxFOV = -1.0f;
+	vcsCamShake = 0.0f;
+	vcsCamShakeStartSpeed = -1.0f;
+	cameraAnchoring = 1.0f;            // rigid anchor for the III/VC cameras
+	cameraStiffness = 1.0f;            // multiply the profile's default stiffness
+	vehicleSpecificZoom = vc ? 1.0f : 0.0f;
 	modernTurretControl = true;
 	modernDriveBy = true;
+	lockShootDirKBM = true;
+	lockShootDirJOY = true;
+	smoothSideView = false;            // vanilla instant look; Enhanced enables the smooth side view
 	mouseFreeLook = true;
 	heightIncreaseOnBike = vc;
 	fixTheBug = true;
-	trafficCamWobble = false;       // a mod effect: not part of any vanilla camera, opt-in
-	reverseCam = false;             // quality-of-life: Enhanced only, or forced in the ini
+	trafficCamWobble = 0.0f;           // a mod effect: not part of any vanilla camera, opt-in
+	reverseCam = false;                // quality-of-life: Enhanced only, or forced in the ini
 	seeUnderwater = false;
+	cameraReturnSpeed = 1.0f;
+	cameraReturnTime = 0.5f;           // seconds for the free-look auto-return
+	cameraHeightOffset = 0.0f;
 	cameraLateralOffset = 0.0f;
-	cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
+	cameraDistanceOffset = 0.0f;
+	cameraMinDistance = -1.0f;         // <0 = profile default
 	cameraDistanceScale = 1.0f;
+	cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
 	enhancedVC = false;
-	cameraHeight = 0.0f;
+
+	// Vice City's game-matched camera reacts to the terrain downhill.
+	if (vc) {
+		pitchTilt = 1.0f;
+		pitchTiltUphill = 0.0f;        // authentic VC: downhill only
+	}
 
 	if (sa) {
 		// San Andreas' native camera aspects. The follow camera floats (no
@@ -168,35 +187,41 @@ void applyProfile(ModernProfile profile, bool vc) {
 		// handled by the mod's camera on SA too (see CamSA.cpp), so the toggle
 		// stays on. These are the defaults; the profile below can still turn its
 		// own features on.
-		cameraAnchoring = 0;
-		cameraStiffness = -1.0f;
-		cameraWobble = false;
-		pitchTilt = 2;            // match game -> no slope tilt on SA
-		dynamicSpeedFOV = false;
-		vehicleSpecificZoom = true;
+		cameraAnchoring = 0.0f;
+		cameraStiffness = 1.0f;
+		cameraWobble = 0.0f;
+		pitchTilt = 0.0f;              // match game -> no slope tilt on SA
+		pitchTiltUphill = -1.0f;
+		pitchTiltDownhill = -1.0f;
+		dynamicSpeedFOV = 0.0f;
+		vehicleSpecificZoom = 1.0f;
 		heightIncreaseOnBike = true;
 		mouseFreeLook = true;
 	}
 
 	switch (profile) {
 	case PROFILE_ENHANCED:
-	case PROFILE_CUSTOM_CAM:
 		// Game-matched camera plus quality-of-life additions.
-		elasticStringPhysics = true;
-		dynamicSpeedFOV = true;
-		pitchTilt = 3;
-		vcsCamShake = true;
-		trafficCamWobble = true;
-		if (profile == PROFILE_ENHANCED) {
+		elasticStringPhysics = 1.0f;
+		dynamicSpeedFOV = 1.0f;
+		pitchTilt = 1.0f;              // both directions (uphill/downhill follow the master)
+		pitchTiltUphill = -1.0f;
+		pitchTiltDownhill = -1.0f;
+		vcsCamShake = 1.0f;
+		trafficCamWobble = 1.0f;       // the shipped gentle lean (70% of the raw effect)
+		smoothSideView = true;         // smooth side view instead of the vanilla instant look
+		lockShootDirKBM = false;       // keyboard/mouse drive-by re-aims freely
+		lockShootDirJOY = true;        // gamepad drive-by keeps the burst direction
+		{
 			// Enhanced is the Vice City camera with the modern extras: adopt the
 			// Vice City feature flags, camera angles, anchor and stiffness even in
 			// GTA III, while the III-only engine behaviour (roof/ground height,
 			// top-down camera, reversed turret) is left as-is.
-			cameraWobble = true;
-			vehicleSpecificZoom = true;
+			cameraWobble = 1.0f;
+			vehicleSpecificZoom = 1.0f;
 			heightIncreaseOnBike = true;
-			cameraAnchoring = 1;      // authentic III/VC rigid anchor
-			cameraStiffness = 1.0f;   // authentic vanilla stiffness
+			cameraAnchoring = 1.0f;    // authentic III/VC rigid anchor
+			cameraStiffness = 1.0f;    // authentic vanilla stiffness
 			reverseCam = true;
 			enhancedVC = true;
 		}
@@ -205,58 +230,59 @@ void applyProfile(ModernProfile profile, bool vc) {
 		// The GTA III camera has no steering wobble, no per-vehicle zoom table
 		// and no bike-passenger height; pin them to the III camera even when the
 		// profile is forced while Vice City is running.
-		cameraWobble = false;
-		pitchTilt = 0;
-		vehicleSpecificZoom = false;
+		cameraWobble = 0.0f;
+		pitchTilt = 0.0f;
+		vehicleSpecificZoom = 0.0f;
 		heightIncreaseOnBike = false;
 		break;
 	case PROFILE_VC:
 		// Vice City's own camera feature set, also when forced on GTA III.
-		cameraWobble = true;
-		pitchTilt = 1;
-		vehicleSpecificZoom = true;
+		cameraWobble = 1.0f;
+		pitchTilt = 1.0f;
+		pitchTiltUphill = 0.0f;        // authentic VC: downhill only
+		vehicleSpecificZoom = 1.0f;
 		heightIncreaseOnBike = true;
 		break;
 	case PROFILE_VCS:
-		vcsCamShake = true;
-		cameraWobble = false;
-		pitchTilt = 0;
-		vehicleSpecificZoom = true;
+		vcsCamShake = 1.0f;
+		cameraWobble = 0.0f;
+		pitchTilt = 0.0f;
+		vehicleSpecificZoom = 1.0f;
 		heightIncreaseOnBike = true;
-		cameraAnchoring = 0;
-		dynamicSpeedFOV = true;
+		cameraAnchoring = 0.0f;
+		dynamicSpeedFOV = 1.0f;
 		break;
 	case PROFILE_SA_CAM:
 		// Authentic San Andreas camera with the mod's fixes: no steering wobble,
 		// no slope tilt and no dynamic speed FOV.
-		cameraWobble = false;
-		pitchTilt = 0;
-		vehicleSpecificZoom = true;
+		cameraWobble = 0.0f;
+		pitchTilt = 0.0f;
+		vehicleSpecificZoom = 1.0f;
 		heightIncreaseOnBike = true;
-		cameraAnchoring = 0;
-		dynamicSpeedFOV = false;
+		cameraAnchoring = 0.0f;
+		dynamicSpeedFOV = 0.0f;
 		break;
 	case PROFILE_LCS_CAM:
 		// Liberty City Stories has no steering wobble or slope tilt either.
-		cameraWobble = false;
-		pitchTilt = 0;
-		vehicleSpecificZoom = true;
+		cameraWobble = 0.0f;
+		pitchTilt = 0.0f;
+		vehicleSpecificZoom = 1.0f;
 		heightIncreaseOnBike = true;
-		cameraAnchoring = 0;
-		dynamicSpeedFOV = true;
+		cameraAnchoring = 0.0f;
+		dynamicSpeedFOV = 1.0f;
 		break;
 	case PROFILE_IV:
 		// IV has no steering wobble or VC-style slope tilt.
-		cameraWobble = false;
-		pitchTilt = 0;
-		vehicleSpecificZoom = true;
+		cameraWobble = 0.0f;
+		pitchTilt = 0.0f;
+		vehicleSpecificZoom = 1.0f;
 		heightIncreaseOnBike = true;
-		cameraAnchoring = 0;
-		dynamicSpeedFOV = false;
+		cameraAnchoring = 0.0f;
+		dynamicSpeedFOV = 0.0f;
 		// GTA IV keeps the driver's seat centred on screen, so the orbit target
 		// is the driver's seat (left, forward, up from the car centre). The height
 		// was lowered because the IV profile sat too high in GTA III; fine-tune
-		// with [Features] CameraHeight.
+		// with [Offsets] CameraHeightOffset.
 		cameraDriverOffset = CVector(-0.32f, 0.20f, 0.30f);
 		cameraDistanceScale = 0.85f;
 		break;
@@ -271,15 +297,13 @@ void applyProfile(ModernProfile profile, bool vc) {
 		distanceProfile = PROFILE_SA;
 		fovProfile = PROFILE_SA;
 		anglesProfile = PROFILE_SA;
-		cameraAnchoring = 0;
-		cameraStiffness = -1.0f;
-		// The SA camera keeps its own steering feel: no VC steering wobble and
-		// no VCS camera shake on SA.
-		cameraWobble = false;
-		vcsCamShake = false;
+		cameraAnchoring = 0.0f;
+		cameraStiffness = 1.0f;
+		// The SA camera keeps its own steering feel (no VC steering wobble), but
+		// the VCS high-speed shake is wanted on SA's Enhanced profile.
+		cameraWobble = 0.0f;
+		vcsCamShake = 1.0f;
 	}
 }
 
 const char *profileNames[] = { "Game", "III", "VC", "SA", "Enhanced", "LCS", "VCS", "IV", "Custom" };
-const char *anchoringNames[] = { "Disabled (SA float)", "Enabled (Rigid anchor)", "Match profile" };
-const char *pitchTiltNames[] = { "Disabled (Flat/III)", "Authentic VC (Downhill)", "Match game (Auto)", "Full symmetric" };

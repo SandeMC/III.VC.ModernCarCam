@@ -282,7 +282,7 @@ struct CColModelIII
 	~CColModelIII(void) { };
 };
 
-// This is III one, not same in VC but it doesn't matter
+// GTA III layout; Vice City differs but the shared fields are enough.
 class CBaseModelInfo
 {
 public:
@@ -334,7 +334,7 @@ class CMatrix
 public:
 	RwMatrix m_matrix;
 	RwMatrix* m_attachment;
-	bool m_hasRwMatrix;	// are we the owner?
+	bool m_hasRwMatrix;	// whether this matrix owns its RenderWare matrix
 
 	CMatrix(void) {
 		m_attachment = nil;
@@ -427,7 +427,7 @@ enum eEntityStatus
 	STATUS_PLAYER_DISABLED,
 };
 
-// Again, not actually same between III and VC but doesn't matter to us.
+// Again, Vice City differs but the shared fields are enough.
 class CEntity : public CPlaceable
 {
 public:
@@ -486,7 +486,7 @@ public:
 	uint16 m_level;	// int16
 	CReference* m_pFirstReference;
 
-	void* GetColModel(void) { return CModelInfo::GetModelInfo(m_modelIndex)->GetColModel(); }
+	void* GetColModel(void) { CBaseModelInfo* mi = CModelInfo::GetModelInfo(m_modelIndex); return mi ? mi->GetColModel() : nil; }
 
 	virtual ~CEntity(void) { };
 
@@ -505,7 +505,7 @@ static_assert(sizeof(CEntity) == 0x64, "CEntity: error");
 class CPhysicalIII : public CEntity
 {
 public:
-	// The not properly indented fields haven't been checked properly yet
+	// The offsets below are not fully verified.
 
 	int32 m_audioEntityId;
 	float unk1;
@@ -796,7 +796,7 @@ struct RsGlobalType
 
 	void* ps; /* platform specific data */
 
-	// Removed the fields we don't use
+	// Trailing fields not used by the mod are omitted.
 };
 
 class CWorldIII
@@ -879,7 +879,9 @@ public:
 	uint8 m_info;                      // 0x36 (eEntityType:3 | eEntityStatus:5)
 	uint8 _pad37;                      // 0x37
 
-	void* GetColModel(void) { return *(void**)(CModelInfo::GetModelInfoPtr(m_modelIndex) + 0x14); }
+	// Null-safe: an added vehicle whose model info is not registered yet (unused
+	// IDs) used to crash here by dereferencing a null model-info pointer.
+	void* GetColModel(void) { addr mi = CModelInfo::GetModelInfoPtr(m_modelIndex); return mi ? *(void**)(mi + 0x14) : nil; }
 
 	uint32 GetType(void) { return m_info & 7; }
 	uint32 GetStatus(void) { return (m_info >> 3) & 0x1F; }
