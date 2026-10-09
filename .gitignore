@@ -8,3 +8,14 @@ Debug/
 *.exe
 *.zip
 .kilo/
+
+# Third-party reference mods (kept outside the repo, e.g. D:\CarCamReferences)
+Manual Driveby III/
+Manual Driveby VC/
+Manual Driveby Refixed/
+ModernizedDriveBy_1.5/
+
+# Look-camera diagnostic logs
+*.looklog.csv
+*vclooklog*.csv
+*salooklog.csv

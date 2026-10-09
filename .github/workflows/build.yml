@@ -44,6 +44,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item -LiteralPath 'Release\III.VC.SA.ModernCarCam.asi' -Destination dist
           Copy-Item -LiteralPath 'III.VC.SA.ModernCarCam.ini' -Destination dist
+          Copy-Item -LiteralPath 'readme.txt' -Destination dist
           Copy-Item -LiteralPath 'LICENSE' -Destination dist
           Copy-Item -LiteralPath 'licenses' -Destination dist -Recurse
 
