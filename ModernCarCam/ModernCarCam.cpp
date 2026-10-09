@@ -18,13 +18,14 @@
 // ini option layered on top of that baseline.
 //
 // This file owns DllMain and the game hooks, the address wrappers for the
-// engine calls, the shared buffer helper and the debug menu. The rest of the
-// project is split by concern (see ModernCarCam.h):
+// engine calls, the shared buffer helper and the debug-menu hooks. The rest of
+// the project is split by concern (see ModernCarCam.h):
 //
 //   Profiles.cpp  camera tables + applyProfile()
 //   Settings.cpp  ini parsing + settings state
 //   CamVanilla.cpp  authentic III/VC "on a string" and behind-boat cameras
 //   CamSA.cpp       San Andreas follow-camera engine
+//   DebugMenu.cpp   the ModernCarCam section of aap's debug menu
 //
 // The authentic camera is based on the reversed sources of re3 / reVC
 // (https://github.com/Hezkore/hez-gta-re3); see licenses/re3.txt.
@@ -38,7 +39,6 @@ int gtaversion = -1;
 // isVC() also returns true for Re:LCS.
 bool isReLCS = false;
 
-int debugMenuLoaded = 0; // 1: not installed 2: installed
 DebugMenuAPI gDebugMenuAPI;
 
 // -----
@@ -143,6 +143,17 @@ WRAPPER void CMatrix::UpdateRW(void) { EAXJMP(updateRwAddress); }
 addr ditbAddress = AddressByVersion<addr>(0x48BFB0, 0, 0, 0x4A4C02, 0, 0, 0);
 void (*DebugInitTextBuffer)();
 
+// San Andreas has no reversed CDebug::DebugInitTextBuffer call site, so the
+// menu is registered from the game's startup instead: the first call in WinMain
+// (0x74872D, into CGame::IsAlreadyRunning at 0x7468E0, the single-instance
+// check). It runs exactly once, before the game is initialised, which is where
+// aap's own mods load and fill the debug menu too.
+int (*SA_IsAlreadyRunning)();
+static int RegisterDebugMenuOnSA(void) {
+	registerDebugMenuEntries();
+	return SA_IsAlreadyRunning();
+}
+
 // Actually static member of CVehicle. SA uses its inverse (m_bEnableMouseSteering
 // at 0xC1CC02); see MouseSteeringDisabled() in CamSA.cpp.
 bool &m_bDisableMouseSteering = *AddressByVersion<bool*>(0x60252C, 0, 0, 0x69C610, 0, 0);
@@ -155,37 +166,20 @@ bool lookingRelativelyRight = false;
 
 void onMasterProfileChange(void) {
 	applyProfile(cameraProfile, isVC());
+	// The menu edits the engine variables in place; the unit shadows need to
+	// follow the values applyProfile() just reset.
+	syncDebugMenuShadows();
 }
 
 // ---------------------------------------------------------------------------
 // Debug menu
+//
+// registerDebugMenuEntries() (DebugMenu.cpp) does the actual registration; the
+// game-specific hook below only decides when it runs. The III/VC hook sits on
+// the game's debug-text-buffer init, so it must still call the original.
 // ---------------------------------------------------------------------------
 void registerDebugMenu() {
-	if (!debugMenuLoaded) {
-		if (DebugMenuLoad()) {
-			DebugMenuAddInt8("ModernCarCam", "Camera profile", (int8_t*)&cameraProfile, onMasterProfileChange, 1, 0, 8, profileNames);
-
-			DebugMenuAddVar("ModernCarCam", "Camera wobble (x)", &cameraWobble, nil, 0.1f, 0.0f, 5.0f);
-			DebugMenuAddVar("ModernCarCam", "Elastic string (x)", &elasticStringPhysics, nil, 0.1f, 0.0f, 5.0f);
-			DebugMenuAddVar("ModernCarCam", "Pitch slope tilt (x)", &pitchTilt, nil, 0.1f, 0.0f, 5.0f);
-			DebugMenuAddVar("ModernCarCam", "Dynamic speed FOV (x)", &dynamicSpeedFOV, nil, 0.1f, 0.0f, 5.0f);
-			DebugMenuAddVar("ModernCarCam", "VCS camera shake (x)", &vcsCamShake, nil, 0.1f, 0.0f, 5.0f);
-			DebugMenuAddVar("ModernCarCam", "Camera anchoring (x)", &cameraAnchoring, nil, 0.1f, 0.0f, 5.0f);
-			DebugMenuAddVar("ModernCarCam", "Heading follow (x)", &headingFollow, nil, 0.1f, 0.0f, 5.0f);
-			DebugMenuAddVar("ModernCarCam", "Vehicle-specific zoom (x)", &vehicleSpecificZoom, nil, 0.1f, 0.0f, 5.0f);
-			DebugMenuAddVarBool8("ModernCarCam", "Modern turret control", (int8*)&modernTurretControl, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "Modern drive-by", (int8*)&modernDriveBy, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "Lock shot dir (KBM)", (int8*)&lockShootDirKBM, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "Lock shot dir (pad)", (int8*)&lockShootDirJOY, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "Mouse free-look", (int8*)&mouseFreeLook, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "SA bikes cam raise with passenger", (int8*)&heightIncreaseOnBike, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "Fix Camera clipping through the model bug", (int8*)&fixTheBug, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "Don't keep camera over water", (int8*)&seeUnderwater, nil);
-			DebugMenuAddVarBool8("ModernCarCam", "Smooth side view", (int8*)&smoothSideView, nil);
-			debugMenuLoaded = 2;
-		} else
-			debugMenuLoaded = 1;
-	}
+	registerDebugMenuEntries();
 	DebugInitTextBuffer();
 }
 
@@ -481,9 +475,13 @@ DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 		}
 		else return FALSE;
 
-		// The SA debug-menu call site is not reversed here; only III/VC expose it.
+		// III/VC register the menu from their debug-text-buffer init. SA has no
+		// reversed debug-menu call site, so its startup call in WinMain is used
+		// instead (see RegisterDebugMenuOnSA above).
 		if (ditbAddress)
 			InterceptCall(&DebugInitTextBuffer, registerDebugMenu, ditbAddress);
+		else if (isSA())
+			InterceptCall(&SA_IsAlreadyRunning, RegisterDebugMenuOnSA, 0x74872D);
 
 		// Make this mod's FOV / camera shake options win over the Widescreen
 		// Fix's own copies (must run before WSF reads its ini at game init).

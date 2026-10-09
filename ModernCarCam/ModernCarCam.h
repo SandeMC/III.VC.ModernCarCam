@@ -11,7 +11,8 @@
 //   Settings.cpp      ini parsing and the settings/feature state
 //   CamVanilla.cpp    the vanilla "camera on a string" and behind-boat engines
 //   CamSA.cpp         the San Andreas follow-camera engine
-//   ModernCarCam.cpp  DllMain, hooks, addresses, shared maths helpers, debug menu
+//   DebugMenu.cpp     the ModernCarCam section of aap's debug menu
+//   ModernCarCam.cpp  DllMain, hooks, addresses, shared maths helpers
 //
 // Profile model
 // -------------
@@ -472,9 +473,16 @@ void* RwCameraSetNearClipPlane(void* camera, float nearClip);
 void applyProfile(ModernProfile profile, bool vc);
 void LoadSettings();
 void OnGInputSettingsReload();
-void registerDebugMenu();
+void registerDebugMenu();          // III/VC wrapper: registers the menu, then runs the game's debug-text-buffer init
+void registerDebugMenuEntries();   // one-time registration into debugmenu.dll (all three games)
+void syncDebugMenuShadows();       // refresh the menu's unit shadows from the engine values
 void onMasterProfileChange(void);
 void InitVanillaLookHooks(bool vc, bool iii);   // takes over the III/VC native look for SmoothSideView / keyboard free-look
+
+// Rebuilds the mutable Custom camera tables from the customDist*/customAngle*
+// scalars. LoadSettings() calls it once; the debug menu calls it when a Custom
+// value is edited so the change reaches the camera without an ini reload.
+void buildCustomCameraTables();
 
 // ---------------------------------------------------------------------------
 // Camera engine entry points

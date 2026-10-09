@@ -9,6 +9,7 @@
   <ItemGroup>
     <ClCompile Include="CamSA.cpp" />
     <ClCompile Include="CamVanilla.cpp" />
+    <ClCompile Include="DebugMenu.cpp" />
     <ClCompile Include="ModernCarCam.cpp" />
     <ClCompile Include="Pad.cpp" />
     <ClCompile Include="Profiles.cpp" />

@@ -90,6 +90,27 @@ void OnGInputSettingsReload()
 	ginputPad->SendConstEvent(GINPUT_EVENT_FETCH_PAD_SETTINGS, &padSettings);
 }
 
+// The Custom profile applies one distance/angle per zoom to every vehicle class.
+// LoadSettings() builds the tables once; the debug menu rebuilds them when a
+// Custom value is edited so the running camera picks the change up immediately.
+void buildCustomCameraTables(void)
+{
+	for (int i = 0; i < 8; i++) {
+		CARCAM_SET_CUSTOM[i][1] = 0.0f; // distance offset now lives in [Offsets]
+		CARCAM_SET_CUSTOM[i][4] = 10.0f;
+		CARCAM_SET_CUSTOM[i][13] = 0.785398f;
+		CARCAM_SET_CUSTOM[i][14] = 1.5533431f;
+	}
+	for (int i = 0; i < 5; i++) {
+		CarZoomModesCustom[i] = customDistNear;
+		CarZoomModesCustom[i + 5] = customDistMid;
+		CarZoomModesCustom[i + 10] = customDistFar;
+		ZmOneAlphaOffsetCustom[i] = customAngleNear;
+		ZmTwoAlphaOffsetCustom[i] = customAngleMid;
+		ZmThreeAlphaOffsetCustom[i] = customAngleFar;
+	}
+}
+
 void LoadSettings()
 {
 	char iniPath[MAX_PATH];
@@ -230,20 +251,7 @@ void LoadSettings()
 	customAngleMid  = DEGTORAD(ReadFloat("Custom", "CustomAngleMid", 2.58f));
 	customAngleFar  = DEGTORAD(ReadFloat("Custom", "CustomAngleFar", 0.29f));
 
-	for (int i = 0; i < 8; i++) {
-		CARCAM_SET_CUSTOM[i][1] = 0.0f; // distance offset now lives in [Offsets]
-		CARCAM_SET_CUSTOM[i][4] = 10.0f;
-		CARCAM_SET_CUSTOM[i][13] = 0.785398f;
-		CARCAM_SET_CUSTOM[i][14] = 1.5533431f;
-	}
-	for (int i = 0; i < 5; i++) {
-		CarZoomModesCustom[i] = customDistNear;
-		CarZoomModesCustom[i + 5] = customDistMid;
-		CarZoomModesCustom[i + 10] = customDistFar;
-		ZmOneAlphaOffsetCustom[i] = customAngleNear;
-		ZmTwoAlphaOffsetCustom[i] = customAngleMid;
-		ZmThreeAlphaOffsetCustom[i] = customAngleFar;
-	}
+	buildCustomCameraTables();
 
 	// [Features] switches + [Multipliers] strengths. Switchable effects combine
 	// the two: the switch decides on/off, the multiplier scales the strength.

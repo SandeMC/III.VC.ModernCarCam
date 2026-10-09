@@ -18,6 +18,9 @@
     <ClCompile Include="ModernCarCam.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="DebugMenu.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="Profiles.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
