@@ -145,6 +145,11 @@ void applyProfile(ModernProfile profile, bool vc) {
 	pitchTilt = 0.0f;                  // master: off unless the profile turns it on
 	pitchTiltUphill = -1.0f;           // <0 = use the master value
 	pitchTiltDownhill = -1.0f;
+	// Slopes shallower than 2 degrees are ignored so flat roads do not jitter;
+	// while airborne the last ground tilt is held, then eased to the car's nose.
+	pitchTiltMinAngle = DEGTORAD(2.0f);
+	pitchTiltAirHoldTime = 0.35f;
+	pitchTiltAirBlendTime = 1.0f;
 	dynamicSpeedFOV = 0.0f;            // not native to III/VC
 	dynamicSpeedFOVStartSpeed = -1.0f; // <0 = profile default
 	dynamicSpeedFOVMaxFOV = -1.0f;
@@ -152,6 +157,7 @@ void applyProfile(ModernProfile profile, bool vc) {
 	vcsCamShakeStartSpeed = -1.0f;
 	cameraAnchoring = 1.0f;            // rigid anchor for the III/VC cameras
 	cameraStiffness = 1.0f;            // multiply the profile's default stiffness
+	headingFollow = 1.0f;              // multiplier on the SA follow camera's yaw follow
 	vehicleSpecificZoom = vc ? 1.0f : 0.0f;
 	modernTurretControl = true;
 	modernDriveBy = true;
@@ -162,6 +168,11 @@ void applyProfile(ModernProfile profile, bool vc) {
 	heightIncreaseOnBike = vc;
 	fixTheBug = true;
 	trafficCamWobble = 0.0f;           // a mod effect: not part of any vanilla camera, opt-in
+	trafficCamWobbleMinSpeed = 0.15f;  // forward speed (m/tick) needed to trigger a pass-by nudge
+	trafficCamWobbleFullSpeed = 0.5f;  // speed at which the nudge reaches its max multiplier
+	trafficCamWobbleMaxMultiplier = 2.0f; // nudge strength at full speed (before TrafficCamWobble)
+	reverseCamDelay = 0.25f;           // seconds of reversing before the reverse camera swings
+	dynamicSpeedFOVDecay = 0.98f;      // per-step FOV decay (Enhanced/SA feel)
 	reverseCam = false;                // quality-of-life: Enhanced only, or forced in the ini
 	seeUnderwater = false;
 	cameraReturnSpeed = 1.0f;
@@ -207,7 +218,9 @@ void applyProfile(ModernProfile profile, bool vc) {
 		pitchTilt = 1.0f;              // both directions (uphill/downhill follow the master)
 		pitchTiltUphill = -1.0f;
 		pitchTiltDownhill = -1.0f;
-		vcsCamShake = 1.0f;
+		// Enhanced uses the VCS shake at half strength so it stays a subtle
+		// quality-of-life touch rather than the full VCS feel.
+		vcsCamShake = 0.5f;
 		trafficCamWobble = 1.0f;       // the shipped gentle lean (70% of the raw effect)
 		smoothSideView = true;         // smooth side view instead of the vanilla instant look
 		lockShootDirKBM = false;       // keyboard/mouse drive-by re-aims freely
@@ -272,13 +285,26 @@ void applyProfile(ModernProfile profile, bool vc) {
 		dynamicSpeedFOV = 1.0f;
 		break;
 	case PROFILE_IV:
-		// IV has no steering wobble or VC-style slope tilt.
+		// IV has no steering wobble, but it does pitch with the terrain in both
+		// directions, so enable the slope tilt symmetrically (uphill and downhill
+		// at the master strength). Its camera has a light elastic stretch and a
+		// subtle speed FOV, both lighter than the Enhanced profile's. It stays on
+		// the SA follow camera (cameraAnchoring 0): the elastic string is applied
+		// there too, and the on-a-string engine sat the IV camera too high on III.
 		cameraWobble = 0.0f;
-		pitchTilt = 0.0f;
+		pitchTilt = 1.0f;
+		pitchTiltUphill = -1.0f;
+		pitchTiltDownhill = -1.0f;
 		vehicleSpecificZoom = 1.0f;
 		heightIncreaseOnBike = true;
 		cameraAnchoring = 0.0f;
-		dynamicSpeedFOV = 0.0f;
+		// GTA III's follow is far more eager than Vice City's, so the IV profile
+		// runs it at half strength there to hold the yaw into gentle turns like VC
+		// does; Vice City keeps the full follow.
+		headingFollow = isIII() ? 0.5f : 1.0f;
+		elasticStringPhysics = 0.5f;   // lighter than the Enhanced profile's 1.0
+		dynamicSpeedFOV = 0.5f;        // subtle speed FOV (half of Enhanced)
+		dynamicSpeedFOVDecay = 0.90f;  // snaps back quickly when slowing down
 		// GTA IV keeps the driver's seat centred on screen, so the orbit target
 		// is the driver's seat (left, forward, up from the car centre). The height
 		// was lowered because the IV profile sat too high in GTA III; fine-tune
@@ -300,9 +326,10 @@ void applyProfile(ModernProfile profile, bool vc) {
 		cameraAnchoring = 0.0f;
 		cameraStiffness = 1.0f;
 		// The SA camera keeps its own steering feel (no VC steering wobble), but
-		// the VCS high-speed shake is wanted on SA's Enhanced profile.
+		// the VCS high-speed shake is wanted on SA's Enhanced profile, at the same
+		// half strength the Enhanced profile uses elsewhere.
 		cameraWobble = 0.0f;
-		vcsCamShake = 1.0f;
+		vcsCamShake = 0.5f;
 	}
 }
 

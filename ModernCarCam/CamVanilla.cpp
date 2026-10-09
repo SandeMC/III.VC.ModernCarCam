@@ -379,8 +379,12 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		float forwardSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
 		if (forwardSpeed > fovStartSpeed)
 			cam->FOV += (forwardSpeed - fovStartSpeed) * ms_fTimeStep * dynamicSpeedFOV;
-		if (cam->FOV > baseFOV)
-			cam->FOV = powf(0.98f, ms_fTimeStep) * (cam->FOV - baseFOV) + baseFOV;
+		if (cam->FOV > baseFOV) {
+			// 0.98 is the game's CAR_FOV_FADE_MULT decay per step; IV and any
+			// ini override can wind the FOV down faster.
+			float fovDecay = (dynamicSpeedFOVDecay > 0.0f && dynamicSpeedFOVDecay < 1.0f) ? dynamicSpeedFOVDecay : 0.98f;
+			cam->FOV = powf(fovDecay, ms_fTimeStep) * (cam->FOV - baseFOV) + baseFOV;
+		}
 		cam->FOV = clamp(cam->FOV, baseFOV, baseFOV + maxFOVAdd * dynamicSpeedFOV);
 	} else {
 		cam->FOV = baseFOV;
@@ -516,6 +520,10 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	if (pad->GetLookBehindForCar() || pad->GetLookBehindForPed() || pad->GetLookLeft() || pad->GetLookRight())
 		stepsLeftToChangeBetaByMouse = 0.0f;
 	bool mouseChangesBeta = false;
+	// True only while the player is actively moving the look input this frame,
+	// not during the trailing 50-step release hold. The reverse takeover keys off
+	// this so a leftover hold from before the reverse cannot suppress the swing.
+	bool lookInputThisFrame = false;
 	float mouseXMovement = 0.0f;
 	float mouseYMovement = 0.0f;
 	if (mouseFreeLook && m_bUseMouse3rdPerson && !GetDisablePlayerControls(pad) && nextDirectionIsForward) {
@@ -530,6 +538,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			cam->AlphaSpeed = 0.0f;
 			stepsLeftToChangeBetaByMouse = 50.0f;
 			mouseChangesBeta = true;
+			lookInputThisFrame = true;
 		} else if (stepsLeftToChangeBetaByMouse > 0.0f) {
 			cam->BetaSpeed = 0.0f;
 			cam->AlphaSpeed = 0.0f;
@@ -580,6 +589,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			cam->AlphaSpeed = 0.0f;
 			stepsLeftToChangeBetaByMouse = 50.0f;
 			mouseChangesBeta = true;
+			lookInputThisFrame = true;
 		}
 	}
 
@@ -677,9 +687,20 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	// ---- Camera height / pitch (WorkOutCamHeight) ----
 	{
 		const CVector forward = car->GetForward();
-		float carAlpha = LimitRadianAngle(GetATanOfXY(forward.Magnitude2D(), forward.z));
+		float carSlope = LimitRadianAngle(GetATanOfXY(forward.Magnitude2D(), forward.z));
 		float deltaBeta = LimitRadianAngle(cam->Beta - TargetOrientation);
-		carAlpha = -carAlpha * cosf(deltaBeta);
+		// Dead-zone: ignore shallow slopes so flat roads cannot jitter the camera.
+		// The threshold is subtracted, so the tilt grows smoothly from zero as the
+		// slope passes it instead of stepping on. Only the Vice City path needs
+		// this: GTA III's path below already has its own 1.8 degree dead-zone, and
+		// stacking the two was swallowing the tilt on ordinary roads.
+		if (vc) {
+			if (fabsf(carSlope) <= pitchTiltMinAngle)
+				carSlope = 0.0f;
+			else
+				carSlope -= (carSlope > 0.0f ? pitchTiltMinAngle : -pitchTiltMinAngle);
+		}
+		float carAlpha = -carSlope * cosf(deltaBeta);
 		const float length = (cam->Source - TargetCoors).Magnitude2D();
 
 		// Slope tilt strengths: pitchTilt is the master; the uphill/downhill
@@ -884,9 +905,13 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	static float reverseTime = 0.0f;
 	static bool reverseLookActive = false;
 	static float reverseBetaSpeed = 0.0f;
+	// Latched when the player takes the mouse during a reverse: it blocks the
+	// swing from re-arming so the mouse keeps Beta until the reverse ends.
+	static bool reversePlayerOverride = false;
 	const float reverseSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
+	// reverseTime is in seconds, so ReverseCameraDelay reads naturally.
 	if (reverseSpeed < -0.05f)
-		reverseTime += ms_fTimeStep;
+		reverseTime += ms_fTimeStep * TimeStepToSeconds;
 	else
 		reverseTime = 0.0f;
 
@@ -895,10 +920,20 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		reverseTime = 0.0f;
 		reverseLookActive = false;
 	}
-	else if (!reverseCam) {
+
+	// Once the reverse ends, a later reverse may arm the swing again. If the
+	// player has taken the mouse, the swing stays off for the rest of the reverse.
+	if (reverseTime == 0.0f)
+		reversePlayerOverride = false;
+	// Latch only on an actual look input this frame, not the trailing release
+	// hold, so a leftover hold from before the reverse cannot suppress the swing.
+	if (lookInputThisFrame)
+		reversePlayerOverride = true;
+
+	if (!reverseCam || reversePlayerOverride) {
 		reverseLookActive = false;
 	}
-	else if (reverseTime > 0.5f) {
+	else if (reverseTime > reverseCamDelay) {
 		reverseLookActive = true;
 	}
 	else if (reverseLookActive && reverseSpeed > 0.05f) {
@@ -1052,10 +1087,12 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	// Ported from ThirteenAG's WidescreenFixesPack
 	// (MIT licensed, see licenses/WidescreenFixesPack.txt).
 	if (vcsCamShake > 0.0f && (isCar || isBike)) {
+		// III and VC get a stronger shake so it lands like it does on SA, where
+		// the strength already feels right (see NonSACamShakeScale).
 		float vehSpeed = car->m_vecMoveSpeed.Magnitude();
 		float shakeStart = (vcsCamShakeStartSpeed >= 0.0f) ? vcsCamShakeStartSpeed : VCSCamShakeStartSpeed;
 		if (vehSpeed > shakeStart) {
-			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake;
+			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake * (isSA() ? 1.0f : NonSACamShakeScale);
 			int r = rand();
 			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
 			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
@@ -1063,17 +1100,70 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		}
 	}
 
-	// ---- Slight camera tilt when passing traffic very closely ----
+	// ---- Slight camera nudge when passing traffic very closely ----
+	// A single out-and-back impulse per vehicle actually passed, not a continuous
+	// lean: sitting next to a parked car does nothing, and the nudge only fires
+	// while the car is moving forward faster than TrafficCamWobbleMinSpeed.
 	// trafficCamWobble is a multiplier: 1.0 is the shipped gentle strength (70% of
 	// the raw amplitude), 0 = off.
 	float trafficWobbleTarget = 0.0f;
 	if (trafficCamWobble > 0.0f) {
-		CEntity* nearEnt = WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false);
-		if (nearEnt) {
-			CVector side = CrossProduct(car->GetForward(), CVector(0.0f, 0.0f, 1.0f));
-			side.Normalise();
-			float lateral = DotProduct(nearEnt->GetPosition() - car->GetPosition(), side);
-			trafficWobbleTarget = clamp(lateral * 0.07f, -0.05f, 0.05f) * 0.7f * trafficCamWobble;
+		const float kImpulseDuration = 0.3f;          // seconds, out and back
+		const float kImpulseAmplitude = 0.7f * 0.05f; // 70% of the raw 0.05 cap
+		static CEntity* trafficNearEntity = nil;      // vehicle whose pass-by already fired
+		static float trafficImpulseTime = 0.0f;       // seconds left in the current nudge
+		static float trafficImpulseSign = 0.0f;       // side the passed vehicle was on
+		static float trafficImpulseScale = 1.0f;      // speed multiplier captured when the nudge fired
+		// The sphere test is a world broadphase query; running it every frame
+		// while driving was a measurable cause of microstutter. A passed vehicle
+		// stays in the 2.2 m sphere for many frames, so a short cooldown loses
+		// nothing.
+		static int trafficQueryCooldown = 0;
+
+		const float forwardSpeed = DotProduct(car->m_vecMoveSpeed, car->GetForward());
+
+		// Scale the nudge with speed: 1x at MinSpeed, up to MaxMultiplier at
+		// FullSpeed, so a slow crawl barely nudges and a fast pass is stronger.
+		float trafficScale = 1.0f;
+		if (trafficCamWobbleFullSpeed > trafficCamWobbleMinSpeed) {
+			float t = clamp((forwardSpeed - trafficCamWobbleMinSpeed) / (trafficCamWobbleFullSpeed - trafficCamWobbleMinSpeed), 0.0f, 1.0f);
+			trafficScale = 1.0f + t * (max(1.0f, trafficCamWobbleMaxMultiplier) - 1.0f);
+		}
+
+		if (trafficQueryCooldown > 0)
+			trafficQueryCooldown--;
+		CEntity* nearEnt = nil;
+		bool didQuery = false;
+		if (forwardSpeed > trafficCamWobbleMinSpeed && trafficQueryCooldown <= 0) {
+			nearEnt = WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false);
+			trafficQueryCooldown = 6; // ~0.1 s at 50 FPS
+			didQuery = true;
+		}
+
+		if (didQuery) {
+			if (!nearEnt) {
+				// Nothing in range: forget the last vehicle so a later pass can fire.
+				trafficNearEntity = nil;
+			} else if (nearEnt != trafficNearEntity && trafficImpulseTime <= 0.0f) {
+				// A new vehicle entered the sphere while moving: one nudge, signed
+				// by the side it is on. A vehicle that stays nearby cannot re-fire
+				// (it is remembered until it leaves, which clears it above).
+				CVector side = CrossProduct(car->GetForward(), CVector(0.0f, 0.0f, 1.0f));
+				side.Normalise();
+				float lateral = DotProduct(nearEnt->GetPosition() - car->GetPosition(), side);
+				trafficImpulseSign = (lateral >= 0.0f) ? 1.0f : -1.0f;
+				trafficImpulseScale = trafficScale;
+				trafficImpulseTime = kImpulseDuration;
+				trafficNearEntity = nearEnt;
+			}
+		}
+
+		if (trafficImpulseTime > 0.0f) {
+			// sin(pi * t) runs 0 -> peak -> 0 across the impulse; the roll buffer
+			// below turns that into a smooth lean out and back.
+			float progress = 1.0f - trafficImpulseTime / kImpulseDuration;
+			trafficWobbleTarget = trafficImpulseSign * kImpulseAmplitude * trafficImpulseScale * sinf(progress * PI) * trafficCamWobble;
+			trafficImpulseTime -= ms_fTimeStep * TimeStepToSeconds;
 		}
 	}
 

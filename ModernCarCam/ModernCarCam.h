@@ -108,6 +108,9 @@ extern float elasticStringPhysics;
 extern float pitchTilt;         // master strength for both slope directions
 extern float pitchTiltUphill;   // <0 = use the master value
 extern float pitchTiltDownhill; // <0 = use the master value
+extern float pitchTiltMinAngle; // radians: slopes shallower than this produce no tilt (jitter guard)
+extern float pitchTiltAirHoldTime;  // seconds: hold the last ground tilt after leaving the ground
+extern float pitchTiltAirBlendTime; // seconds: ease from the held tilt to the vehicle's nose while airborne
 extern float maxPitchAngle;     // <0 = profile default; camera pitch limits
 extern float minPitchAngle;     // <0 = profile default
 extern float dynamicSpeedFOV;
@@ -117,8 +120,14 @@ extern float vcsCamShake;
 extern float vcsCamShakeStartSpeed;     // <0 = profile default
 extern float cameraAnchoring;   // >0 = rigid anchor (scaled); 0 = SA float
 extern float cameraStiffness;   // multiplies the profile's default stiffness
+extern float headingFollow;     // multiplies the SA follow camera's yaw follow (1 = profile default; lower = camera holds its yaw longer)
 extern float vehicleSpecificZoom;
 extern float trafficCamWobble;
+extern float trafficCamWobbleMinSpeed;    // forward speed (m/tick) below which the traffic nudge never fires
+extern float trafficCamWobbleFullSpeed;   // forward speed (m/tick) at which the nudge reaches its max multiplier
+extern float trafficCamWobbleMaxMultiplier; // nudge strength multiplier reached at TrafficCamWobbleFullSpeed
+extern float reverseCamDelay;             // seconds of reversing before the reverse camera swings
+extern float dynamicSpeedFOVDecay;        // per-step FOV decay base (smaller = winds down faster)
 extern float cameraReturnSpeed; // multiplier on the free-look auto-return rate
 extern float cameraReturnTime;  // seconds the free-look auto-return lasts
 extern bool modernTurretControl;
@@ -280,12 +289,24 @@ inline bool IsPedAimCameraMode(int mode) {
 constexpr float MaxForwardSpeed = 210.0f;
 constexpr float SpeedKphFactor = 180.0f;
 
+// CTimer::ms_fTimeStep is expressed in 1/50 s units (about 1.0 at 50 FPS and
+// 50/30 at the 30 FPS reference), not in seconds. Multiply it by this to
+// advance a seconds-based timer each frame.
+constexpr float TimeStepToSeconds = 1.0f / 50.0f;
+
 // VCS camera shake (ported from ThirteenAG's WidescreenFixesPack): starts at
-// 0.65 and ramps to 1.0, scaled down by 200.
+// 0.65 and ramps to 1.0, scaled down by 200 (WSF's UpdatePlayerVehicleSpeedBlur
+// uses the same 0.65 -> 1.0 ramp and /200; a rework had doubled this to 400,
+// which halved the shake and made it feel like it was not working).
 constexpr float VCSCamShakeStartSpeed = 0.65f;
 constexpr float VCSCamShakeFullSpeed = 1.0f;
 constexpr float VCSCamShakeRange = 0.35f;
-constexpr float VCSCamShakeDivisor = 400.0f;
+constexpr float VCSCamShakeDivisor = 200.0f;
+
+// The VCS-style shake is boosted on GTA III and Vice City so it lands as hard as
+// it does on San Andreas, where the current strength already feels right. SA is
+// deliberately left at 1.0.
+constexpr float NonSACamShakeScale = 1.5f;
 
 #define RwFrameGetMatrix(frame) (RwMatrix*)((addr)frame + 0x10)
 #define GetVehicleComponent(car, comp) *(void**)((addr)car + (isIII() ? 0x37C : 0x394) + comp*4) // In CAutomobile. normally returns RwFrame*

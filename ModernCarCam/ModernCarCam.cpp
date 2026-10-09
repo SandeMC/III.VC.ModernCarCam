@@ -171,6 +171,7 @@ void registerDebugMenu() {
 			DebugMenuAddVar("ModernCarCam", "Dynamic speed FOV (x)", &dynamicSpeedFOV, nil, 0.1f, 0.0f, 5.0f);
 			DebugMenuAddVar("ModernCarCam", "VCS camera shake (x)", &vcsCamShake, nil, 0.1f, 0.0f, 5.0f);
 			DebugMenuAddVar("ModernCarCam", "Camera anchoring (x)", &cameraAnchoring, nil, 0.1f, 0.0f, 5.0f);
+			DebugMenuAddVar("ModernCarCam", "Heading follow (x)", &headingFollow, nil, 0.1f, 0.0f, 5.0f);
 			DebugMenuAddVar("ModernCarCam", "Vehicle-specific zoom (x)", &vehicleSpecificZoom, nil, 0.1f, 0.0f, 5.0f);
 			DebugMenuAddVarBool8("ModernCarCam", "Modern turret control", (int8*)&modernTurretControl, nil);
 			DebugMenuAddVarBool8("ModernCarCam", "Modern drive-by", (int8*)&modernDriveBy, nil);

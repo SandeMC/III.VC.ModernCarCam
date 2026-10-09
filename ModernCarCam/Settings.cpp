@@ -23,6 +23,9 @@ float elasticStringPhysics = 0.0f;
 float pitchTilt = 0.0f;
 float pitchTiltUphill = -1.0f;
 float pitchTiltDownhill = -1.0f;
+float pitchTiltMinAngle = 0.0f;   // set by applyProfile (2 degrees)
+float pitchTiltAirHoldTime = 0.0f;  // set by applyProfile
+float pitchTiltAirBlendTime = 0.0f; // set by applyProfile
 float maxPitchAngle = -1.0f;
 float minPitchAngle = -1.0f;
 float dynamicSpeedFOV = 0.0f;
@@ -32,8 +35,14 @@ float vcsCamShake = 0.0f;
 float vcsCamShakeStartSpeed = -1.0f;
 float cameraAnchoring = 1.0f;
 float cameraStiffness = 1.0f;
+float headingFollow = 1.0f;
 float vehicleSpecificZoom = 1.0f;
 float trafficCamWobble = 0.0f;
+float trafficCamWobbleMinSpeed = 0.0f;    // set by applyProfile
+float trafficCamWobbleFullSpeed = 0.0f;   // set by applyProfile
+float trafficCamWobbleMaxMultiplier = 0.0f; // set by applyProfile
+float reverseCamDelay = 0.0f;             // set by applyProfile
+float dynamicSpeedFOVDecay = 0.0f;        // set by applyProfile
 float cameraReturnSpeed = 1.0f;
 float cameraReturnTime = 0.5f;
 bool modernTurretControl = true;
@@ -205,6 +214,16 @@ void LoadSettings()
 	OverrideFloat("PitchTilt", pitchTilt);
 	OverrideFloat("PitchTiltUphill", pitchTiltUphill);
 	OverrideFloat("PitchTiltDownhill", pitchTiltDownhill);
+	// The ini expresses the dead-zone in degrees (easy to reason about); the
+	// engine works in radians like the rest of the pitch maths.
+	{
+		char buf[32] = { 0 };
+		GetPrivateProfileStringA("Features", "PitchTiltMinAngle", "", buf, sizeof(buf), iniPath);
+		if (buf[0])
+			pitchTiltMinAngle = DEGTORAD((float)atof(buf));
+	}
+	OverrideFloat("PitchTiltAirHoldTime", pitchTiltAirHoldTime);
+	OverrideFloat("PitchTiltAirBlendTime", pitchTiltAirBlendTime);
 	OverrideFloat("MaxPitch", maxPitchAngle);
 	OverrideFloat("MinPitch", minPitchAngle);
 	OverrideFloat("DynamicSpeedFOV", dynamicSpeedFOV);
@@ -214,8 +233,14 @@ void LoadSettings()
 	OverrideFloat("VCSCamShakeStartSpeed", vcsCamShakeStartSpeed);
 	OverrideFloat("CameraAnchoring", cameraAnchoring);
 	OverrideFloat("CameraStiffness", cameraStiffness);
+	OverrideFloat("HeadingFollow", headingFollow);
 	OverrideFloat("VehicleSpecificZoom", vehicleSpecificZoom);
 	OverrideFloat("TrafficCamWobble", trafficCamWobble);
+	OverrideFloat("TrafficCamWobbleMinSpeed", trafficCamWobbleMinSpeed);
+	OverrideFloat("TrafficCamWobbleFullSpeed", trafficCamWobbleFullSpeed);
+	OverrideFloat("TrafficCamWobbleMaxMultiplier", trafficCamWobbleMaxMultiplier);
+	OverrideFloat("ReverseCameraDelay", reverseCamDelay);
+	OverrideFloat("DynamicSpeedFOVDecay", dynamicSpeedFOVDecay);
 	OverrideFloat("CameraReturnSpeed", cameraReturnSpeed);
 	OverrideFloat("CameraReturnTime", cameraReturnTime);
 	OverrideBool("ModernTurretControl", modernTurretControl);

@@ -66,6 +66,8 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	static float heightIncreaseMult;
 	static float camPitchTilt = 0.0f;
 	static float camPitchTiltSpeed = 0.0f;
+	static float slopeAirborneTime = 0.0f;   // seconds spent off the ground (slope tilt continuity)
+	static float slopeLastGroundTilt = 0.0f;  // last ground tilt, held through short hops
 
 	if (!cam->CamTargetEntity->IsVehicle())
 		return;
@@ -347,25 +349,59 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	}
 
 	// Slope tilt. pitchTilt is the master strength; the uphill/downhill keys
-	// override it per direction (<0 = use the master value).
+	// override it per direction (<0 = use the master value). The tilt follows
+	// the ground while the wheels are down; in the air it holds the last ground
+	// value briefly (so small bumps and hops do not reset it), then eases to the
+	// vehicle's nose so the camera lines up with the car while jumping.
 	float uphillStrength = (pitchTiltUphill >= 0.0f) ? pitchTiltUphill : pitchTilt;
 	float downhillStrength = (pitchTiltDownhill >= 0.0f) ? pitchTiltDownhill : pitchTilt;
 	bool tiltEnabled = uphillStrength > 0.0f || downhillStrength > 0.0f;
 
 	float targetSlopeTilt = 0.0f;
 
-	bool wheelsOnGround = isBike ? (GetMysteriousWheelRelatedThingBike(car) > 0) : (GetWheelsOnGround(car) > 0);
-	if (tiltEnabled && (isCar || isBike) && wheelsOnGround) {
-		float forwardSlope = atan2f(car->GetForward().z, car->GetForward().Magnitude2D());
-		float deltaBeta = cam->Beta - (car->GetForward().Heading() - HALFPI);
-		float behindCarNess = cosf(deltaBeta);
-		float carAlpha = -forwardSlope * behindCarNess;
+	if (tiltEnabled && (isCar || isBike)) {
+		// The car's nose slope (positive = pointing up), scaled into the tilt
+		// angle for the current camera position (carAlpha > 0 is downhill).
+		const float rawForwardSlope = atan2f(car->GetForward().z, car->GetForward().Magnitude2D());
+		auto slopeTiltFor = [&](float forwardSlope) {
+			float carAlpha = -forwardSlope * cosf(cam->Beta - (car->GetForward().Heading() - HALFPI));
+			return (carAlpha > 0.0f)
+				? clamp(carAlpha, 0.0f, 0.35f) * downhillStrength
+				: clamp(carAlpha, -0.35f, 0.0f) * uphillStrength;
+		};
 
-		// carAlpha > 0 is downhill.
-		if (carAlpha > 0.0f)
-			targetSlopeTilt = clamp(carAlpha, 0.0f, 0.35f) * downhillStrength;
-		else
-			targetSlopeTilt = clamp(carAlpha, -0.35f, 0.0f) * uphillStrength;
+		bool wheelsOnGround = isBike ? (GetMysteriousWheelRelatedThingBike(car) > 0) : (GetWheelsOnGround(car) > 0);
+		if (wheelsOnGround) {
+			slopeAirborneTime = 0.0f;
+
+			// Dead-zone: ignore shallow slopes so flat roads cannot jitter the
+			// camera. The threshold is subtracted, so the tilt grows smoothly
+			// from zero as the slope passes it instead of stepping on.
+			float forwardSlope = rawForwardSlope;
+			if (fabsf(forwardSlope) <= pitchTiltMinAngle)
+				forwardSlope = 0.0f;
+			else
+				forwardSlope -= (forwardSlope > 0.0f ? pitchTiltMinAngle : -pitchTiltMinAngle);
+
+			slopeLastGroundTilt = slopeTiltFor(forwardSlope);
+			targetSlopeTilt = slopeLastGroundTilt;
+		} else {
+			slopeAirborneTime += ms_fTimeStep * TimeStepToSeconds;
+			if (slopeAirborneTime <= pitchTiltAirHoldTime) {
+				// Continuity: keep the last ground tilt through short hops.
+				targetSlopeTilt = slopeLastGroundTilt;
+			} else {
+				// Ease toward the nose over the blend time, so the camera settles
+				// onto the vehicle while flying instead of snapping to default.
+				const float noseTilt = slopeTiltFor(rawForwardSlope);
+				const float blend = clamp(
+					(slopeAirborneTime - pitchTiltAirHoldTime) / max(0.01f, pitchTiltAirBlendTime),
+					0.0f, 1.0f);
+				targetSlopeTilt = slopeLastGroundTilt + (noseTilt - slopeLastGroundTilt) * blend;
+			}
+		}
+	} else {
+		slopeAirborneTime = 0.0f;
 	}
 
 	if (tiltEnabled) {
@@ -424,9 +460,12 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 				cam->FOV += (forwardSpeed - fovStartSpeed) * ms_fTimeStep * dynamicSpeedFOV;
 		}
 
-		if (cam->FOV > currentBaseFOV)
-			// 0.98 is the game's CAR_FOV_FADE_MULT decay per step.
-			cam->FOV = pow(0.98f, ms_fTimeStep) * (cam->FOV - currentBaseFOV) + currentBaseFOV;
+		if (cam->FOV > currentBaseFOV) {
+			// 0.98 is the game's CAR_FOV_FADE_MULT decay per step; IV and any
+			// ini override can wind the FOV down faster.
+			float fovDecay = (dynamicSpeedFOVDecay > 0.0f && dynamicSpeedFOVDecay < 1.0f) ? dynamicSpeedFOVDecay : 0.98f;
+			cam->FOV = pow(fovDecay, ms_fTimeStep) * (cam->FOV - currentBaseFOV) + currentBaseFOV;
+		}
 
 		float fovCap = currentBaseFOV + maxFOVAdd * ((dynamicSpeedFOV > 0.0f) ? dynamicSpeedFOV : 1.0f);
 		if (cam->FOV <= fovCap)
@@ -456,6 +495,9 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	static float reverseTime = 0.0f;
 	static int reverseState = 0;
 	static float reverseBetaSpeed = 0.0f;
+	// Latched when the player takes the mouse during a reverse: it blocks the
+	// swing from re-arming so the mouse keeps Beta until the reverse ends.
+	static bool reversePlayerOverride = false;
 
 	// Runs once when the player just entered the car.
 	if (cam->ResetStatics) {
@@ -483,6 +525,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		reverseTime = 0.0f;
 		reverseState = 0;
 		reverseBetaSpeed = 0.0f;
+		reversePlayerOverride = false;
 		lookState = 0;
 		lookBetaSpeed = 0.0f;
 		lookReturnFrames = 0;
@@ -491,6 +534,8 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		// read as the camera slamming to the top. The buffer above tracks the
 		// slope smoothly instead.
 		camPitchTiltSpeed = 0.0f;
+		slopeAirborneTime = 0.0f;
+		slopeLastGroundTilt = 0.0f;
 
 		cam->Front.x = -(cos(cam->Beta) * cos(cam->Alpha));
 		cam->Front.y = -(sin(cam->Beta) * cos(cam->Alpha));
@@ -509,8 +554,9 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	// integrate Beta every frame; that double update was the wobble that stopped
 	// the camera from settling behind the car. Declared above, reset on (re)entry.
 	const float reverseSpeed = DotProduct(car->GetForward(), car->m_vecMoveSpeed);
+	// reverseTime is in seconds, so ReverseCameraDelay reads naturally.
 	if (reverseSpeed < -0.05f)
-		reverseTime += ms_fTimeStep;
+		reverseTime += ms_fTimeStep * TimeStepToSeconds;
 	else
 		reverseTime = 0.0f;
 
@@ -521,9 +567,15 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		reverseBetaSpeed = 0.0f;
 	}
 
+	// Once the reverse ends, a later reverse may arm the swing again.
+	if (reverseTime == 0.0f)
+		reversePlayerOverride = false;
+
+	// The player-mouse override blocks re-arming, so the swing cannot re-grab
+	// Beta after the mouse has taken it (see the free-look cancel below).
 	if (reverseState != 0 && !reverseCam)
 		reverseState = 0;
-	else if (reverseCam && reverseTime > 0.5f)
+	else if (reverseCam && reverseTime > reverseCamDelay && !reversePlayerOverride)
 		reverseState = 1;
 	else if (reverseState == 1 && reverseSpeed > 0.05f)
 		reverseState = 2;
@@ -568,8 +620,13 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	float profileStiffness = (masterProfile == PROFILE_LCS) ? 0.4f : 0.25f;
 	float stiffnessMult = profileStiffness * max(0.0f, cameraStiffness);
 
-	float v70 = ms_fTimeStep * CARCAM_SET[camSetArrPos][10] * (stiffnessMult * 4.0f);
-	float v153 = ms_fTimeStep * CARCAM_SET[camSetArrPos][11] * (stiffnessMult * 4.0f);
+	// Heading follow strength. 1.0 is the profile's normal follow; lower values
+	// make the camera hold its yaw longer before swinging in behind the car (the
+	// IV profile softens it on GTA III, whose follow is naturally more eager).
+	// Exposed as [Features] HeadingFollow for custom profiles.
+	const float headingFollowScale = max(0.0f, headingFollow);
+	float v70 = ms_fTimeStep * CARCAM_SET[camSetArrPos][10] * (stiffnessMult * 4.0f) * headingFollowScale;
+	float v153 = ms_fTimeStep * CARCAM_SET[camSetArrPos][11] * (stiffnessMult * 4.0f) * headingFollowScale;
 
 	float a6f = (car->m_vecMoveSpeed - DotProduct(car->m_vecMoveSpeed, cam->Front) * cam->Front).Magnitude();
 
@@ -732,6 +789,10 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	if (anyLookInput)
 		stepsLeftToChangeBetaByMouse = 0.0f;
 	bool mouseChangesBeta = false;
+	// True only while the player is actively moving the look input this frame,
+	// not during the trailing 50-step release hold. The reverse takeover keys off
+	// this so a leftover hold from before the reverse cannot suppress the swing.
+	bool lookInputThisFrame = false;
 
 	// Free look is native to SA, so it runs there even when the mod's toggle is
 	// off. It is disabled during a drive-by, matching SA, whose original mouse
@@ -753,6 +814,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 			targetAlpha = cam->Alpha;
 			stepsLeftToChangeBetaByMouse = 1.0f * 50.0f;
 			mouseChangesBeta = true;
+			lookInputThisFrame = true;
 		}
 		else if (stepsLeftToChangeBetaByMouse > 0.0f)
 		{
@@ -779,6 +841,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		targetAlpha = cam->Alpha;
 		stepsLeftToChangeBetaByMouse = 50.0f;
 		mouseChangesBeta = true;
+		lookInputThisFrame = true;
 	}
 
 	// Ease back to the default camera angle after free look, like the III/VC
@@ -819,8 +882,21 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	else if (targetBetaWithStickBlendAmount > v117)
 		targetBetaWithStickBlendAmount = v117;
 
+	// Free look during a reverse takes Beta over: cancel the swing (both the
+	// look-behind swing, state 1, and its revert, state 2) so it cannot fight the
+	// player. The override latch is set only on an actual look input this frame,
+	// not the trailing release hold: a leftover hold from before the reverse must
+	// not suppress the swing for the whole manoeuvre. This runs before the Beta
+	// integration so the mouse's angle is applied on this very frame.
+	if (mouseChangesBeta) {
+		reverseState = 0;
+		reverseBetaSpeed = 0.0f;
+	}
+	if (lookInputThisFrame)
+		reversePlayerOverride = true;
+
 	float angleChangeStepLeft = 1.0 - angleChangeStep;
-	if (reverseState == 0 && lookState == 0) {
+	if ((reverseState == 0 && lookState == 0) || mouseChangesBeta) {
 		cam->BetaSpeed = targetBetaWithStickBlendAmount * angleChangeStepLeft + angleChangeStep * cam->BetaSpeed;
 		if (fabsf(cam->BetaSpeed) < 0.0001f)
 			cam->BetaSpeed = 0.0f;
@@ -907,8 +983,9 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 
 	// ---- Reverse look-behind: drive Beta with its own state and speed so it
 	// settles smoothly behind the car instead of fighting the follow logic ----
-	// Free look takes over Beta: let the player control it like normal instead of
-	// the camera only allowing vertical movement during the reverse swing.
+	// (The free-look cancel above has already cleared the swing for this frame;
+	// this guard is kept as a safety net so the drive below can never run while
+	// the mouse owns Beta.)
 	if (mouseChangesBeta) {
 		reverseState = 0;
 		reverseBetaSpeed = 0.0f;
@@ -973,11 +1050,11 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 			}
 		} else {
 			// The same buffered ease swings in and returns, giving a natural
-			// accelerate/decelerate feel. The rate matches the reverse camera's
-			// (0.10 / 0.02) ballpark; the old 0.25 reached the target in a couple
-			// of frames with the SA timestep and read as an instant jump. Once the
-			// return is close, hand Beta back to the follow.
-			WellBufferMe(target, &cam->Beta, &lookBetaSpeed, 0.12f, 0.04f, true);
+			// accelerate/decelerate feel. The rate is the SA SmoothSideView speed
+			// the user tuned (0.25 / 0.10); the VC engine's 0.24 / 0.10 below is
+			// the equivalent feel and is deliberately left alone. Once the return
+			// is close, hand Beta back to the follow.
+			WellBufferMe(target, &cam->Beta, &lookBetaSpeed, 0.25f, 0.10f, true);
 			if (lookState == 4 || lookState == 5) {
 				lookReturnFrames++;
 				if (fabsf(LimitRadianAngle(cam->Beta - target)) < 0.02f || lookReturnFrames > 240) {
@@ -1016,7 +1093,11 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	// Separately configurable for keyboard/mouse and gamepad aiming.
 	static bool lockBehind = false, lockLeft = false, lockRight = false;
 	{
-		const bool firing = pad->GetCarGunFired();
+		// GTA III has no CPad::GetCarGunFired (its mod address is null; see
+		// Pad.cpp), so calling it there jumped to address 0 and crashed the SA
+		// engine on III. III never reports a held car-gun fire in this camera, so
+		// treat it as not firing (short-circuit keeps the null call out).
+		const bool firing = isIII() ? false : pad->GetCarGunFired();
 		const bool aimingWithPad = pad->GetCarGunLeftRight() != 0 || pad->GetCarGunUpDown() != 0;
 		const bool lock = aimingWithPad ? lockShootDirJOY : lockShootDirKBM;
 		if (!(firing && lock)) {
@@ -1036,17 +1117,70 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	cam->Front.y = -(sin(cam->Beta) * cos(cam->Alpha));
 	cam->Front.z = sin(cam->Alpha);
 
-	// Slight camera tilt when passing traffic very closely.
+	// Slight camera nudge when passing traffic very closely. A single out-and-back
+	// impulse per vehicle actually passed, not a continuous lean: sitting next to
+	// a parked car does nothing, and the nudge only fires while the car is moving
+	// forward faster than TrafficCamWobbleMinSpeed.
 	// trafficCamWobble is a multiplier: 1.0 is the shipped gentle strength (70% of
 	// the raw amplitude), 0 = off.
 	float trafficWobbleTarget = 0.0f;
 	if (trafficCamWobble > 0.0f) {
-		CEntity* nearEnt = WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false);
-		if (nearEnt) {
-			CVector side = CrossProduct(car->GetForward(), CVector(0.0f, 0.0f, 1.0f));
-			side.Normalise();
-			float lateral = DotProduct(nearEnt->GetPosition() - car->GetPosition(), side);
-			trafficWobbleTarget = clamp(lateral * 0.07f, -0.05f, 0.05f) * 0.7f * trafficCamWobble;
+		const float kImpulseDuration = 0.3f;          // seconds, out and back
+		const float kImpulseAmplitude = 0.7f * 0.05f; // 70% of the raw 0.05 cap
+		static CEntity* trafficNearEntity = nil;      // vehicle whose pass-by already fired
+		static float trafficImpulseTime = 0.0f;       // seconds left in the current nudge
+		static float trafficImpulseSign = 0.0f;       // side the passed vehicle was on
+		static float trafficImpulseScale = 1.0f;      // speed multiplier captured when the nudge fired
+		// The sphere test is a world broadphase query; running it every frame
+		// while driving was a measurable cause of microstutter. A passed vehicle
+		// stays in the 2.2 m sphere for many frames, so a short cooldown loses
+		// nothing.
+		static int trafficQueryCooldown = 0;
+
+		const float forwardSpeed = DotProduct(car->m_vecMoveSpeed, car->GetForward());
+
+		// Scale the nudge with speed: 1x at MinSpeed, up to MaxMultiplier at
+		// FullSpeed, so a slow crawl barely nudges and a fast pass is stronger.
+		float trafficScale = 1.0f;
+		if (trafficCamWobbleFullSpeed > trafficCamWobbleMinSpeed) {
+			float t = clamp((forwardSpeed - trafficCamWobbleMinSpeed) / (trafficCamWobbleFullSpeed - trafficCamWobbleMinSpeed), 0.0f, 1.0f);
+			trafficScale = 1.0f + t * (max(1.0f, trafficCamWobbleMaxMultiplier) - 1.0f);
+		}
+
+		if (trafficQueryCooldown > 0)
+			trafficQueryCooldown--;
+		CEntity* nearEnt = nil;
+		bool didQuery = false;
+		if (forwardSpeed > trafficCamWobbleMinSpeed && trafficQueryCooldown <= 0) {
+			nearEnt = WorldClass::TestSphereAgainstWorld(car->GetPosition(), 2.2f, (CEntity*)car, false, true, false, false, false, false);
+			trafficQueryCooldown = 6; // ~0.1 s at 50 FPS
+			didQuery = true;
+		}
+
+		if (didQuery) {
+			if (!nearEnt) {
+				// Nothing in range: forget the last vehicle so a later pass can fire.
+				trafficNearEntity = nil;
+			} else if (nearEnt != trafficNearEntity && trafficImpulseTime <= 0.0f) {
+				// A new vehicle entered the sphere while moving: one nudge, signed
+				// by the side it is on. A vehicle that stays nearby cannot re-fire
+				// (it is remembered until it leaves, which clears it above).
+				CVector side = CrossProduct(car->GetForward(), CVector(0.0f, 0.0f, 1.0f));
+				side.Normalise();
+				float lateral = DotProduct(nearEnt->GetPosition() - car->GetPosition(), side);
+				trafficImpulseSign = (lateral >= 0.0f) ? 1.0f : -1.0f;
+				trafficImpulseScale = trafficScale;
+				trafficImpulseTime = kImpulseDuration;
+				trafficNearEntity = nearEnt;
+			}
+		}
+
+		if (trafficImpulseTime > 0.0f) {
+			// sin(pi * t) runs 0 -> peak -> 0 across the impulse; the roll buffer
+			// below turns that into a smooth lean out and back.
+			float progress = 1.0f - trafficImpulseTime / kImpulseDuration;
+			trafficWobbleTarget = trafficImpulseSign * kImpulseAmplitude * trafficImpulseScale * sinf(progress * PI) * trafficCamWobble;
+			trafficImpulseTime -= ms_fTimeStep * TimeStepToSeconds;
 		}
 	}
 
@@ -1108,10 +1242,12 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	// VCS camera shake. Ported from ThirteenAG's WidescreenFixesPack
 	// (MIT licensed, see licenses/WidescreenFixesPack.txt).
 	if (vcsCamShake > 0.0f && (isCar || isBike)) {
+		// III and VC get a stronger shake so it lands like it does on SA, where
+		// the strength already feels right (see NonSACamShakeScale).
 		float vehSpeed = car->m_vecMoveSpeed.Magnitude();
 		float shakeStart = (vcsCamShakeStartSpeed >= 0.0f) ? vcsCamShakeStartSpeed : VCSCamShakeStartSpeed;
 		if (vehSpeed > shakeStart) {
-			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake;
+			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake * (isSA() ? 1.0f : NonSACamShakeScale);
 			int r = rand();
 			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
 			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
