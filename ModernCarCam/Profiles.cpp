@@ -164,6 +164,7 @@ void applyProfile(ModernProfile profile, bool vc) {
 	lockShootDirKBM = true;
 	lockShootDirJOY = true;
 	smoothSideView = false;            // vanilla instant look; Enhanced enables the smooth side view
+	keyboardFreeLook = sa;             // keyboard drives the free camera in SA (native), not in III/VC
 	mouseFreeLook = true;
 	heightIncreaseOnBike = vc;
 	fixTheBug = true;

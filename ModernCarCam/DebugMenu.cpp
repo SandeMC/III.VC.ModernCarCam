@@ -143,6 +143,7 @@ void registerDebugMenuEntries(void)
 
 	// --- Look and shooting ---
 	DebugMenuAddVarBool8("ModernCarCam|Look & shooting", "Mouse free-look", (int8*)&mouseFreeLook, nil);
+	DebugMenuAddVarBool8("ModernCarCam|Look & shooting", "Keyboard free-look", (int8*)&keyboardFreeLook, nil);
 	DebugMenuAddVarBool8("ModernCarCam|Look & shooting", "Smooth side view", (int8*)&smoothSideView, nil);
 	DebugMenuAddVarBool8("ModernCarCam|Look & shooting", "Reverse look-behind camera", (int8*)&reverseCam, nil);
 	DebugMenuAddVarBool8("ModernCarCam|Look & shooting", "Modern drive-by", (int8*)&modernDriveBy, nil);

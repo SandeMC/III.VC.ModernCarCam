@@ -365,21 +365,26 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	const bool isPlane = (isIII() && car->m_modelIndex == MI_III_DODO) || (GetHandlingFlags(car) & 0x40000);
 	const bool isCar = car->IsCar() && !isHeli && !isBike && !isPlane;
 	const int index = isCar ? 0 : (isBike ? 1 : (isHeli ? 2 : (isPlane ? 3 : 4)));
+	// Helicopters and the RC Baron yaw with the look-left/right keys, so their
+	// side look must stay off in every game (vanilla does the same in
+	// CCam::Process).
+	const bool disableSideLook = DisableVehicleSideLook(car->m_modelIndex, isHeli);
 
 	ColModelClass* carCol = (ColModelClass*)car->GetColModel();
 	if (!carCol)
 		return; // collision model not loaded yet (e.g. a vehicle added at an unused ID)
 	CVector Dimensions = carCol->boundingBox.max - carCol->boundingBox.min;
 
-	// Free-look owns look left/right in III/VC: the game's own look/turret keys
-	// (VC binds Look left/right, III binds Turret left/right, both bind Turret /
-	// Lean up/down) drive it from the free-look block below, so the native
-	// left/right snap is swallowed (see the look hooks above) and only look
-	// behind still gates the follow camera.
-	gFreeLookOwnsLR = mouseFreeLook;
+	// The mod's free camera owns look left/right only while it is actually
+	// driving the view (gFreeLookOwnsLR is set to mouseChangesBeta below). While
+	// it is idle the game's own left/right snap runs untouched, which keeps the
+	// keyboard look keys, the vanilla side view and the drive-by side aim
+	// working. Look behind always stays with the game (GetLookBehindForCar);
+	// the on-foot look-behind (GetLookBehindForPed) is never a vehicle input.
+	gFreeLookOwnsLR = false;
 
 	const uint8 nextDirectionIsForward =
-		!(pad->GetLookBehindForCar() || pad->GetLookBehindForPed()) &&
+		!pad->GetLookBehindForCar() &&
 		cam->DirectionWasLooking == LOOKING_FORWARD;
 
 	// ---- Field of view ----
@@ -546,7 +551,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	// control once the 50-step hold runs out.
 	// Pressing a look key must end any mouse hold immediately, otherwise the camera
 	// stays stuck at the mouse angle until the 50-step release finishes.
-	if (pad->GetLookBehindForCar() || pad->GetLookBehindForPed() || pad->GetLookLeft() || pad->GetLookRight())
+	if (pad->GetLookBehindForCar() || pad->GetLookLeft() || pad->GetLookRight())
 		stepsLeftToChangeBetaByMouse = 0.0f;
 	bool mouseChangesBeta = false;
 	// True only while the player is actively moving the look input this frame,
@@ -586,13 +591,24 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		float stickX = -(float)pad->GetCarGunLeftRight();
 		float stickY = (float)pad->GetCarGunUpDown();
 
+		// With KeyboardFreeLook off the keyboard must not move the free camera.
+		// GInput tells a pad from a keyboard; without it the game's own look keys
+		// are still detected (a pad's stick never presses them), so the keyboard
+		// look keys do not get swallowed from the game either.
+		if (!KeyboardFreeLookAxisEnabled() ||
+		    (!keyboardFreeLook && (pad->GetLookLeft() || pad->GetLookRight() || pad->GetLookBehindForCar()))) {
+			stickX = 0.0f;
+			stickY = 0.0f;
+		}
+
 		// With the smooth side view on, the game's look keys swing the camera
 		// (the mod's smooth look) instead of free-looking, so drop just the
 		// horizontal keyboard contribution; the right stick still free-looks.
-		if (smoothSideView && (pad->GetLookLeft() || pad->GetLookRight()))
+		// Helicopters/RC Baron are exempt: there those keys yaw the vehicle.
+		if (smoothSideView && !disableSideLook && (pad->GetLookLeft() || pad->GetLookRight()))
 			stickX = 0.0f;
 
-		const bool ginputHasPad = ginputPad->HasPadInHands();
+		const bool ginputHasPad = GInputPadInHands();
 		if (ginputHasPad && padSettings.InvertLook)
 			stickY = -stickY;
 		if (vc && *(bool*)0xA10AF7)
@@ -625,6 +641,11 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			lookInputThisFrame = true;
 		}
 	}
+
+	// While the mod's free camera is driving the view, swallow the game's own
+	// left/right snap (see the look hooks). Once it is idle the native side view
+	// takes over again, which restores the keyboard look keys and the drive-by.
+	gFreeLookOwnsLR = mouseChangesBeta;
 
 	// ---- Basic string constraint (Cam_On_A_String_Unobscured) ----
 	// The string only constrains the distance to the target. The direction comes
@@ -992,9 +1013,12 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		// Smooth side view on: the mod owns look left/right/behind and eases in
 		// and back out like the SA engine. Off: the game's native
 		// LookBehind/Left/Right is left untouched (see InitVanillaLookHooks).
-		const bool lookBehindHeld = pad->GetLookBehindForCar() || pad->GetLookBehindForPed();
-		const bool lookLeftHeld = pad->GetLookLeft();
-		const bool lookRightHeld = pad->GetLookRight();
+		const bool lookBehindHeld = pad->GetLookBehindForCar();
+		// Helicopters and the RC Baron yaw with the look-left/right keys, so the
+		// smooth side view must ignore those keys there (vanilla disables its own
+		// left/right handling for these vehicles in CCam::Process).
+		const bool lookLeftHeld = !disableSideLook && pad->GetLookLeft();
+		const bool lookRightHeld = !disableSideLook && pad->GetLookRight();
 		const int lookNow = lookBehindHeld ? 1 : (lookLeftHeld ? 2 : (lookRightHeld ? 3 : 0));
 		static float modLookBetaSpeed = 0.0f;
 		static bool modLookReturning = false;
@@ -1116,23 +1140,6 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		}
 	}
 
-	// ---- VCS camera shake ----
-	// Ported from ThirteenAG's WidescreenFixesPack
-	// (MIT licensed, see licenses/WidescreenFixesPack.txt).
-	if (vcsCamShake > 0.0f && (isCar || isBike)) {
-		// III and VC get a stronger shake so it lands like it does on SA, where
-		// the strength already feels right (see NonSACamShakeScale).
-		float vehSpeed = car->m_vecMoveSpeed.Magnitude();
-		float shakeStart = (vcsCamShakeStartSpeed >= 0.0f) ? vcsCamShakeStartSpeed : VCSCamShakeStartSpeed;
-		if (vehSpeed > shakeStart) {
-			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake * (isSA() ? 1.0f : NonSACamShakeScale);
-			int r = rand();
-			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
-			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
-			cam->Source.z += (((r >> 8) & 0xF) - 7) * shakeFactor;
-		}
-	}
-
 	// ---- Slight camera nudge when passing traffic very closely ----
 	// A single out-and-back impulse per vehicle actually passed, not a continuous
 	// lean: sitting next to a parked car does nothing, and the nudge only fires
@@ -1239,6 +1246,24 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 	}
 
 	cam->m_cvecTargetCoorsForFudgeInter = TargetCoors;
+	// ---- VCS camera shake ----
+	// Ported from ThirteenAG's WidescreenFixesPack
+	// (MIT licensed, see licenses/WidescreenFixesPack.txt). Applied to the final
+	// camera position, after Front/Up are settled, so it is the positional jolt
+	// the reference gives rather than a rotation of the look-at direction. Only
+	// cars (not bikes/boats/air) get it, exactly like the reference.
+	if (vcsCamShake > 0.0f && isCar) {
+		float vehSpeed = car->m_vecMoveSpeed.Magnitude();
+		float shakeStart = (vcsCamShakeStartSpeed >= 0.0f) ? vcsCamShakeStartSpeed : VCSCamShakeStartSpeed;
+		if (vehSpeed > shakeStart) {
+			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake * VCSCamShakeScale();
+			int r = rand();
+			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
+			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
+			cam->Source.z += (((r >> 8) & 0xF) - 7) * shakeFactor;
+		}
+	}
+
 	lookingRelativelyLeft = false;
 	lookingRelativelyRight = false;
 

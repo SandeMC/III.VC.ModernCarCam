@@ -62,6 +62,11 @@ bool enhancedVC = false;
 // Smooth side view: true swings the look left/right/behind smoothly, false uses
 // the vanilla instant change.
 bool smoothSideView = false;
+// Keyboard free-look: true lets the game's own keyboard look/turret keys drive
+// the free camera; false leaves only the mouse and the analogue stick. Defaults
+// to on in San Andreas (how SA behaves) and off in III/VC, where the keyboard
+// keeps its vanilla look-left/right/behind and sub-mission meaning.
+bool keyboardFreeLook = false;
 
 // [Offsets] - applied independently of the selected profile.
 float cameraHeightOffset = 0.0f;
@@ -91,6 +96,8 @@ GINPUT_PAD_SETTINGS padSettings = {};
 
 void OnGInputSettingsReload()
 {
+	if (!ginputPad)
+		return;
 	padSettings.cbSize = sizeof(padSettings);
 	ginputPad->SendConstEvent(GINPUT_EVENT_FETCH_PAD_SETTINGS, &padSettings);
 }
@@ -614,6 +621,7 @@ void LoadSettings()
 	ReadBool("ReverseCamera", reverseCam);
 	ReadBool("BikesHeightIncrease", heightIncreaseOnBike);
 	ReadBool("SmoothSideView", smoothSideView);
+	ReadBool("KeyboardFreeLook", keyboardFreeLook);
 
 	// Inverted relative to the internal "see underwater" flag.
 	int keepWater = ReadSwitch("KeepCameraOverWater");

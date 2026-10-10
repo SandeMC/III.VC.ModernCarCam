@@ -174,11 +174,16 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	CPad* pad = &pad0;
 
 	// Pad look inputs, read once per frame (also consumed by nextDirectionIsForward).
+	// Look behind is the vehicle look-behind only; the on-foot look-behind
+	// (GetLookBehindForPed) shares the pad's right-stick click with the
+	// sub-mission / hide-landing-gear key, so it must never drive the car camera.
 	const bool lookBehindCar = pad->GetLookBehindForCar();
-	const bool lookBehindPed = pad->GetLookBehindForPed();
 	const bool lookLeftKey = pad->GetLookLeft();
 	const bool lookRightKey = pad->GetLookRight();
-	const bool anyLookInput = lookBehindCar || lookBehindPed || lookLeftKey || lookRightKey;
+	// Helicopters and the RC Baron yaw with the look-left/right keys, so their
+	// side look stays off (vanilla does the same in CCam::Process).
+	const bool disableSideLook = DisableVehicleSideLook(car->m_modelIndex, isHeli);
+	const bool anyLookInput = lookBehindCar || lookLeftKey || lookRightKey;
 
 	// True while the follow camera is in control: no look input is held and it
 	// was already looking forward.
@@ -662,7 +667,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	// Look state: holding an input selects it, releasing swings back. The same
 	// state drives both modes; smooth side view only changes how the angle is
 	// applied.
-	int lookNow = (lookBehindCar || lookBehindPed) ? 1 : (lookLeftKey ? 2 : (lookRightKey ? 3 : 0));
+	int lookNow = lookBehindCar ? 1 : (!disableSideLook && lookLeftKey ? 2 : (!disableSideLook && lookRightKey ? 3 : 0));
 	if (lookNow != 0) {
 		lookState = lookNow;
 		lookReturnFrames = 0;
@@ -797,11 +802,21 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	float stickX = (float)-(pad->GetCarGunLeftRight());
 	float stickY = (float)(pad->GetCarGunUpDown());
 
+	// KeyboardFreeLook off means the keyboard/turret keys must not move the
+	// camera: read the axis only while a pad is in the player's hands (GInput
+	// decides; without GInput the keyboard and pad share the axis, so the game's
+	// own look keys are used as a keyboard tell-tale instead).
+	if (!KeyboardFreeLookAxisEnabled() ||
+	    (!keyboardFreeLook && (pad->GetLookLeft() || pad->GetLookRight() || pad->GetLookBehindForCar()))) {
+		stickX = 0.0f;
+		stickY = 0.0f;
+	}
+
 	// SA gates this on m_bUseMouse3rdPerson so num2/num8 do not move the camera
 	// with Keyboard & Mouse controls; checking the actual pad state works better
 	// with GInput. On SA the vertical axis is always read, so the pad can look up
 	// and down.
-	const bool ginputHasPad = ginputPad->HasPadInHands();
+	const bool ginputHasPad = GInputPadInHands();
 	if (!isSA() && (ginputLoaded == 2 ? !ginputHasPad : m_bUseMouse3rdPerson))
 		stickY = 0.0f;
 	else {
@@ -1327,21 +1342,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		cam->Source += side * cameraLateralOffset;
 	}
 
-	// VCS camera shake. Ported from ThirteenAG's WidescreenFixesPack
-	// (MIT licensed, see licenses/WidescreenFixesPack.txt).
-	if (vcsCamShake > 0.0f && (isCar || isBike)) {
-		// III and VC get a stronger shake so it lands like it does on SA, where
-		// the strength already feels right (see NonSACamShakeScale).
-		float vehSpeed = car->m_vecMoveSpeed.Magnitude();
-		float shakeStart = (vcsCamShakeStartSpeed >= 0.0f) ? vcsCamShakeStartSpeed : VCSCamShakeStartSpeed;
-		if (vehSpeed > shakeStart) {
-			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake * (isSA() ? 1.0f : NonSACamShakeScale);
-			int r = rand();
-			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
-			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
-			cam->Source.z += (((r >> 8) & 0xF) - 7) * shakeFactor;
-		}
-	}
+	// (VCS camera shake moved below, after the final camera vectors are built.)
 
 	cam->m_cvecTargetCoorsForFudgeInter = TargetCoors;
 	float v140 = alphaWithSpeedAccounted + zoomModeAlphaOffset;
@@ -1463,6 +1464,25 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	cam->Front = TargetCoors - cam->Source;
 
 	cam->GetVectorsReadyForRW();
+
+	// VCS camera shake. Ported from ThirteenAG's WidescreenFixesPack
+	// (MIT licensed, see licenses/WidescreenFixesPack.txt). Applied to the final
+	// camera position, after Front/Up are settled, so it is the positional jolt
+	// the reference gives rather than a rotation of the look-at direction. Only
+	// cars (not bikes/boats/air) get it, exactly like the reference. The 1.5x
+	// boost is Enhanced-only on III/VC (see VCSCamShakeScale).
+	if (vcsCamShake > 0.0f && isCar) {
+		float vehSpeed = car->m_vecMoveSpeed.Magnitude();
+		float shakeStart = (vcsCamShakeStartSpeed >= 0.0f) ? vcsCamShakeStartSpeed : VCSCamShakeStartSpeed;
+		if (vehSpeed > shakeStart) {
+			float shakeFactor = (min(vehSpeed, VCSCamShakeFullSpeed) - shakeStart) / VCSCamShakeRange / VCSCamShakeDivisor * vcsCamShake * VCSCamShakeScale();
+			int r = rand();
+			cam->Source.x += ((r & 0xF) - 7) * shakeFactor;
+			cam->Source.y += (((r >> 4) & 0xF) - 7) * shakeFactor;
+			cam->Source.z += (((r >> 8) & 0xF) - 7) * shakeFactor;
+		}
+	}
+
 	lookingRelativelyLeft = false;
 	lookingRelativelyRight = false;
 	// SA code from CAutomobile::TankControl/FireTruckControl. The turret angles,

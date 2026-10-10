@@ -142,6 +142,7 @@ extern bool reverseCam;
 extern bool seeUnderwater;
 extern bool enhancedVC;                    // Enhanced uses Vice City's features + camera angles even in GTA III
 extern bool smoothSideView;                 // smooth side view: look left/right/behind swings smoothly instead of the vanilla instant change
+extern bool keyboardFreeLook;               // let the game's keyboard look/turret keys (numpad) drive the free camera; on by default in SA, off in III/VC
 
 // [Offsets] - camera offsets, applied independently of the selected profile.
 extern float cameraHeightOffset;           // extra height in metres added to the camera target
@@ -277,6 +278,26 @@ extern IGInputPad* ginputPad;
 extern int ginputLoaded; // 1: not installed 2: installed
 extern GINPUT_PAD_SETTINGS padSettings;
 
+// True when GInput reports a pad actually in the player's hands. GInput is never
+// null after GInput_Load (it installs a dummy on failure), but the pointer is
+// checked anyway so the helper is safe to call at any time.
+inline bool GInputPadInHands() {
+	return ginputPad != nil && ginputPad->HasPadInHands();
+}
+
+// Whether the keyboard look/turret keys may drive the vehicle free camera. The
+// game folds the keyboard keys and the analogue stick into the same right-stick
+// axis, so GInput is consulted to tell a pad from a keyboard: with the toggle off
+// the axis is only read while a pad is in the player's hands. Without GInput the
+// two cannot be told apart, so the toggle is left alone.
+inline bool KeyboardFreeLookAxisEnabled() {
+	if (keyboardFreeLook)
+		return true;
+	if (ginputLoaded != 2)
+		return true;
+	return GInputPadInHands();
+}
+
 // ---------------------------------------------------------------------------
 // Addresses and game globals
 // ---------------------------------------------------------------------------
@@ -335,6 +356,18 @@ extern bool lookingRelativelyRight;
 #define RcGoblin (isReLCS ? MI_RELCS_RCGOBLIN : MI_VC_RCGOBLIN)
 #define RcRaider (isReLCS ? MI_RELCS_RCRAIDER : MI_VC_RCRAIDER)
 
+// Vanilla CCam::Process disables the vehicle look-left/right keys for
+// helicopters and the RC Baron (their yaw keys share the same controls). The
+// mod's side view and free-look have to mirror that, otherwise turning one of
+// those vehicles swings the camera aside.
+inline bool DisableVehicleSideLook(int modelIndex, bool isHeli) {
+	if (isHeli)
+		return true;
+	if (isVC())
+		return modelIndex == MI_VC_RCBARON;
+	return false;
+}
+
 // The III/VC manual drive-by mods take the camera over to an on-foot/aim mode
 // (CCamera::TakeControl) while the player aims from a vehicle. While one of those
 // cameras is active the vehicle camera is not, and the mod must leave the whole
@@ -366,10 +399,18 @@ constexpr float VCSCamShakeFullSpeed = 1.0f;
 constexpr float VCSCamShakeRange = 0.35f;
 constexpr float VCSCamShakeDivisor = 200.0f;
 
-// The VCS-style shake is boosted on GTA III and Vice City so it lands as hard as
-// it does on San Andreas, where the current strength already feels right. SA is
-// deliberately left at 1.0.
+// On the Enhanced profile the VCS-style shake is scaled per platform: GTA III
+// and Vice City get a 1.5x boost so it lands as hard as it does on San Andreas,
+// while San Andreas is damped to 0.5x. Every other profile uses the faithful
+// 1.0 strength, matching the WidescreenFixesPack/VCS reference exactly.
 constexpr float NonSACamShakeScale = 1.5f;
+constexpr float SAEnhancedCamShakeScale = 0.5f;
+
+inline float VCSCamShakeScale(void) {
+	if (cameraProfile != PROFILE_ENHANCED)
+		return 1.0f;
+	return isSA() ? SAEnhancedCamShakeScale : NonSACamShakeScale;
+}
 
 #define RwFrameGetMatrix(frame) (RwMatrix*)((addr)frame + 0x10)
 #define GetVehicleComponent(car, comp) *(void**)((addr)car + (isIII() ? 0x37C : 0x394) + comp*4) // In CAutomobile. normally returns RwFrame*
