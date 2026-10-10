@@ -159,7 +159,9 @@ void registerDebugMenuEntries(void)
 	// --- Offsets (applied on top of any profile) ---
 	DebugMenuAddVar("ModernCarCam|Offsets", "Height offset (m)", &cameraHeightOffset, nil, 0.05f, -5.0f, 5.0f);
 	DebugMenuAddVar("ModernCarCam|Offsets", "Lateral offset (m)", &cameraLateralOffset, nil, 0.05f, -5.0f, 5.0f);
-	DebugMenuAddVar("ModernCarCam|Offsets", "Distance offset (m)", &cameraDistanceOffset, nil, 0.05f, -10.0f, 10.0f);
+	DebugMenuAddVar("ModernCarCam|Offsets", "Distance offset near (m)", &cameraDistanceOffsetNear, nil, 0.05f, -10.0f, 10.0f);
+	DebugMenuAddVar("ModernCarCam|Offsets", "Distance offset mid (m)", &cameraDistanceOffsetMid, nil, 0.05f, -10.0f, 10.0f);
+	DebugMenuAddVar("ModernCarCam|Offsets", "Distance offset far (m)", &cameraDistanceOffsetFar, nil, 0.05f, -10.0f, 10.0f);
 	DebugMenuAddVar("ModernCarCam|Offsets", "Min distance (m, -1=def)", &cameraMinDistance, nil, 0.05f, -1.0f, 20.0f);
 	DebugMenuAddVar("ModernCarCam|Offsets", "Distance scale (x)", &cameraDistanceScale, nil, 0.05f, 0.0f, 3.0f);
 	DebugMenuAddVar("ModernCarCam|Offsets", "Driver offset X", &cameraDriverOffset.x, nil, 0.05f, -3.0f, 3.0f);

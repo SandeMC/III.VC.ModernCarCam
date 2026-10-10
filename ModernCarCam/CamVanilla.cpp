@@ -450,6 +450,13 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			zoomModes = CarZoomModesVC; // GTA III has no per-vehicle table; emulate Vice City's
 
 		if (zoomModes) {
+			// CarZoomValueSmooth is in the running game's own zoom range, so the
+			// source endpoints are the game's native table (the row for this
+			// vehicle class) and the target is the selected table. With the
+			// [Custom] keys blank the two match, so this is the identity and
+			// Custom reproduces the game's own camera.
+			const float* srcModes = isReLCS ? CarZoomModesLCS : (isVC() ? CarZoomModesVC : CarZoomModesIII);
+			auto srcVal = [&](int row) { return srcModes[index + row]; };
 			// vehicleSpecificZoom blends the per-vehicle row (index) with the
 			// generic car row (0): 1 = full per-vehicle, 0 = generic.
 			float vsz = max(0.0f, vehicleSpecificZoom);
@@ -459,12 +466,12 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 			int ind = (int)TheCamera->CarZoomIndicator;
 			if (ind == 3)
 				zoomValue = zm(10);
-			else if (ind == 2)
+			else if (ind == 2 && srcVal(10) != srcVal(5))
 				zoomValue = zm(5) +
-					(zoomValue - 1.9f) * (zm(10) - zm(5)) / (3.9f - 1.9f);
-			else if (ind == 1)
+					(zoomValue - srcVal(5)) * (zm(10) - zm(5)) / (srcVal(10) - srcVal(5));
+			else if (ind == 1 && srcVal(5) != srcVal(0))
 				zoomValue = zm(0) +
-					(zoomValue - 0.05f) * (zm(5) - zm(0)) / (1.9f - 0.05f);
+					(zoomValue - srcVal(0)) * (zm(5) - zm(0)) / (srcVal(5) - srcVal(0));
 			if (zoomValue < zm(0))
 				zoomValue = zm(0);
 		}
@@ -489,7 +496,7 @@ Process_Cam_On_A_String_Vanilla(CameraClass* TheCamera, CamClass* cam, VehicleCl
 		}
 	}
 
-	cam->CA_MAX_DISTANCE = BaseDist + 0.1f + zoomValue + extraDist + cameraDistanceOffset;
+	cam->CA_MAX_DISTANCE = BaseDist + 0.1f + zoomValue + extraDist + CameraDistanceOffsetForZoom((int)TheCamera->CarZoomIndicator);
 	cam->CA_MIN_DISTANCE = (cameraMinDistance >= 0.0f) ? cameraMinDistance : min(BaseDist * 0.6f, 3.5f);
 	cam->CA_MAX_DISTANCE *= cameraDistanceScale;
 	if (cam->CA_MIN_DISTANCE > cam->CA_MAX_DISTANCE)

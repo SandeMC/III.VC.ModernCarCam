@@ -32,6 +32,10 @@ Debug menu
 ----------
 When the game's debug menu (https://libertycity.net/files/gta-san-andreas/161611-debugmenu.html) is available, the mod adds a **ModernCarCam** section to it with live toggles for every feature.
 
+Per-car cameras
+---------------
+Any single car can have its own camera, separate from the global Profile, by adding a section named "Car" plus the car's model id or model name to the ini - for example [Car400] for model id 400, or [CarHOTRING] for the car whose model name is hotring. A section can name several cars by separating them with commas ([Car494,502,503] or [Carhotring,hotrina,hotrinb]). Distance, FOV, angles (near/middle/far), the Custom camera shape and every [Offsets] value can be set per car; an omitted key keeps the global value. Add as many sections as you like. See the end of III.VC.SA.ModernCarCam.ini for the full key list and examples.
+
 Credits
 -------
 

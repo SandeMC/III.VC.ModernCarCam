@@ -1,5 +1,8 @@
 #include "ModernCarCam.h"
 
+#include <vector>
+#include <ctype.h>
+
 // ---------------------------------------------------------------------------
 // Settings.cpp - settings state and ini parsing.
 //
@@ -63,7 +66,9 @@ bool smoothSideView = false;
 // [Offsets] - applied independently of the selected profile.
 float cameraHeightOffset = 0.0f;
 float cameraLateralOffset = 0.0f;
-float cameraDistanceOffset = 0.0f;
+float cameraDistanceOffsetNear = 0.0f;
+float cameraDistanceOffsetMid = 0.0f;
+float cameraDistanceOffsetFar = 0.0f;
 float cameraMinDistance = -1.0f;           // <0 = profile default
 float cameraDistanceScale = 1.0f;
 CVector cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
@@ -111,6 +116,315 @@ void buildCustomCameraTables(void)
 	}
 }
 
+// The running game's native vehicle-camera shape (its car row). A blank [Custom]
+// key falls back to this, so Profile = Custom starts from the game's own camera
+// and only the keys the user sets change it. Distances are the zoom offsets;
+// angles are radians.
+struct NativeCamShape {
+	float distNear, distMid, distFar;
+	float angleNear, angleMid, angleFar;
+};
+
+static NativeCamShape GetNativeCamShape(void)
+{
+	NativeCamShape s;
+	if (isSA()) {
+		s.distNear = CarZoomModesSA[0]; s.distMid = CarZoomModesSA[5]; s.distFar = CarZoomModesSA[10];
+		s.angleNear = ZmOneAlphaOffset[0]; s.angleMid = ZmTwoAlphaOffset[0]; s.angleFar = ZmThreeAlphaOffset[0];
+	} else if (isReLCS) {
+		s.distNear = CarZoomModesLCS[0]; s.distMid = CarZoomModesLCS[5]; s.distFar = CarZoomModesLCS[10];
+		s.angleNear = ZmOneAlphaOffsetLCS[0]; s.angleMid = ZmTwoAlphaOffsetLCS[0]; s.angleFar = ZmThreeAlphaOffsetLCS[0];
+	} else if (isVC()) {
+		s.distNear = CarZoomModesVC[0]; s.distMid = CarZoomModesVC[5]; s.distFar = CarZoomModesVC[10];
+		s.angleNear = ZmOneAlphaOffsetVC[0]; s.angleMid = ZmTwoAlphaOffsetVC[0]; s.angleFar = ZmThreeAlphaOffsetVC[0];
+	} else {
+		s.distNear = CarZoomModesIII[0]; s.distMid = CarZoomModesIII[5]; s.distFar = CarZoomModesIII[10];
+		s.angleNear = ZmOneAlphaOffsetIII[0]; s.angleMid = ZmTwoAlphaOffsetIII[0]; s.angleFar = ZmThreeAlphaOffsetIII[0];
+	}
+	return s;
+}
+
+// Maps a [General] table-profile selector string onto the internal enum.
+// Blank/unknown falls back to def.
+static CameraProfileType ParseTableProfileName(const char* str, CameraProfileType def)
+{
+	if (!str || !*str)
+		return def;
+	if (_stricmp(str, "SA") == 0 || _stricmp(str, "IV") == 0)
+		return PROFILE_SA;
+	if (_stricmp(str, "LCS") == 0 || _stricmp(str, "VCS") == 0)
+		return PROFILE_LCS;
+	if (_stricmp(str, "Custom") == 0)
+		return PROFILE_CUSTOM;
+	return PROFILE_VANILLA; // Game-Matched / III / VC / Original
+}
+
+// ---------------------------------------------------------------------------
+// Per-car camera overrides ([Car<model id>] sections).
+// ---------------------------------------------------------------------------
+
+// Parsed overrides, one per [Car...] section, in file order. An entry is keyed
+// either by a numeric model id (modelIndex >= 0) or by a model name (name set).
+struct CarCameraEntry {
+	int modelIndex;         // >= 0 for a numeric [Car400] key, -1 for a name key
+	std::string name;       // model name for a name key, empty for a numeric key
+	CarCamSettings settings;
+};
+
+static std::vector<CarCameraEntry> g_carCameraSettings;
+
+static void LoadCarCameraSections(const char* iniPath);
+
+// CRC32 (reflected, init 0xFFFFFFFF, no final invert) with each character
+// upper-cased: the exact CKeyGen::GetUppercaseKey the game uses for model keys
+// on San Andreas, where CBaseModelInfo stores the name hash (at +0x4) rather
+// than the name itself.
+static uint32 GtaUppercaseKey(const char* str)
+{
+	static uint32 table[256];
+	static bool tableReady = false;
+	if (!tableReady) {
+		for (uint32 i = 0; i < 256; i++) {
+			uint32 c = i;
+			for (int k = 0; k < 8; k++)
+				c = (c & 1) ? (0xEDB88320u ^ (c >> 1)) : (c >> 1);
+			table[i] = c;
+		}
+		tableReady = true;
+	}
+
+	uint32 hash = 0xFFFFFFFFu;
+	for (const unsigned char* p = (const unsigned char*)str; *p; ++p)
+		hash = table[(hash ^ (unsigned char)toupper(*p)) & 0xFF] ^ (hash >> 8);
+	return hash;
+}
+
+// True when the model at modelIndex carries the given name. San Andreas stores
+// a name hash (compared with GtaUppercaseKey); III/VC store the name string.
+static bool CarModelNameMatches(int modelIndex, const std::string& name)
+{
+	if (modelIndex < 0)
+		return false;
+	addr mi = CModelInfo::GetModelInfoPtr(modelIndex);
+	if (!mi)
+		return false;
+
+	if (isSA())
+		return *(uint32*)(mi + 0x4) == GtaUppercaseKey(name.c_str());
+
+	char stored[24];
+	memcpy(stored, (void*)(mi + 0x4), sizeof(stored));
+	stored[sizeof(stored) - 1] = 0;
+	return _stricmp(stored, name.c_str()) == 0;
+}
+
+void CaptureCarCamSettings(CarCamSettings& out)
+{
+	out.distanceProfile = distanceProfile;
+	out.fovProfile = fovProfile;
+	out.anglesProfile = anglesProfile;
+
+	out.customDistNear = customDistNear;
+	out.customDistMid = customDistMid;
+	out.customDistFar = customDistFar;
+	out.customBaseFOV = customBaseFOV;
+	out.customAngleNear = customAngleNear;
+	out.customAngleMid = customAngleMid;
+	out.customAngleFar = customAngleFar;
+
+	out.cameraHeightOffset = cameraHeightOffset;
+	out.cameraLateralOffset = cameraLateralOffset;
+	out.cameraDistanceOffsetNear = cameraDistanceOffsetNear;
+	out.cameraDistanceOffsetMid = cameraDistanceOffsetMid;
+	out.cameraDistanceOffsetFar = cameraDistanceOffsetFar;
+	out.cameraMinDistance = cameraMinDistance;
+	out.cameraDistanceScale = cameraDistanceScale;
+	out.cameraDriverOffset = cameraDriverOffset;
+}
+
+void ApplyCarCamSettings(const CarCamSettings& s)
+{
+	distanceProfile = s.distanceProfile;
+	fovProfile = s.fovProfile;
+	anglesProfile = s.anglesProfile;
+
+	customDistNear = s.customDistNear;
+	customDistMid = s.customDistMid;
+	customDistFar = s.customDistFar;
+	customBaseFOV = s.customBaseFOV;
+	customAngleNear = s.customAngleNear;
+	customAngleMid = s.customAngleMid;
+	customAngleFar = s.customAngleFar;
+
+	cameraHeightOffset = s.cameraHeightOffset;
+	cameraLateralOffset = s.cameraLateralOffset;
+	cameraDistanceOffsetNear = s.cameraDistanceOffsetNear;
+	cameraDistanceOffsetMid = s.cameraDistanceOffsetMid;
+	cameraDistanceOffsetFar = s.cameraDistanceOffsetFar;
+	cameraMinDistance = s.cameraMinDistance;
+	cameraDistanceScale = s.cameraDistanceScale;
+	cameraDriverOffset = s.cameraDriverOffset;
+
+	// The Custom tables are rebuilt from the (now overridden) globals so a
+	// per-car Custom shape reaches the camera.
+	buildCustomCameraTables();
+}
+
+const CarCamSettings* FindCarCameraOverride(int modelIndex)
+{
+	for (size_t i = 0; i < g_carCameraSettings.size(); i++) {
+		const CarCameraEntry& entry = g_carCameraSettings[i];
+		if (entry.modelIndex >= 0) {
+			if (entry.modelIndex == modelIndex)
+				return &entry.settings;
+		} else if (!entry.name.empty()) {
+			if (CarModelNameMatches(modelIndex, entry.name))
+				return &entry.settings;
+		}
+	}
+	return nil;
+}
+
+// The resolved ini path, kept so the per-car sections can be re-read when the
+// profile changes at runtime (the debug menu).
+static char g_iniPath[MAX_PATH];
+
+void ReloadPerCarCameraSections(void)
+{
+	if (g_iniPath[0])
+		LoadCarCameraSections(g_iniPath);
+}
+
+// Reads every [Car<model id>] section. Each entry starts from the finished
+// global settings and only overrides the keys it lists; a section with a
+// non-numeric name (or no digits after "Car") is ignored. Any number of
+// sections may be present.
+static void LoadCarCameraSections(const char* iniPath)
+{
+	g_carCameraSettings.clear();
+
+	CarCamSettings base;
+	CaptureCarCamSettings(base);
+
+	// Every section name, as a sequence of null-terminated strings.
+	static char names[16384];
+	DWORD len = GetPrivateProfileSectionNamesA(names, sizeof(names), iniPath);
+	if (len == 0)
+		return;
+
+	// Trims trailing blanks and strips any inline "; comment".
+	auto ReadTrimmed = [&](const char* sec, const char* key, char* out, size_t n) {
+		out[0] = 0;
+		GetPrivateProfileStringA(sec, key, "", out, (DWORD)n, iniPath);
+		char* semi = strchr(out, ';');
+		if (semi)
+			*semi = 0;
+		size_t l = strlen(out);
+		while (l > 0 && (out[l - 1] == ' ' || out[l - 1] == '\t'))
+			out[--l] = 0;
+	};
+	auto ReadFloatInto = [&](const char* sec, const char* key, float& target) {
+		char buf[64];
+		ReadTrimmed(sec, key, buf, sizeof(buf));
+		if (buf[0])
+			target = (float)atof(buf);
+	};
+	// The ini angles are degrees; the engine stores radians.
+	auto ReadAngleDegInto = [&](const char* sec, const char* key, float& targetRad) {
+		char buf[64];
+		ReadTrimmed(sec, key, buf, sizeof(buf));
+		if (buf[0])
+			targetRad = DEGTORAD((float)atof(buf));
+	};
+
+	for (const char* p = names; *p; p += strlen(p) + 1) {
+		const char* section = p;
+
+		if (_strnicmp(section, "Car", 3) != 0)
+			continue;
+		const char* keyText = section + 3;
+		while (*keyText == ' ' || *keyText == '\t')
+			keyText++;
+		if (!*keyText)
+			continue; // a bare [Car] with no key
+		if (_stricmp(keyText, "Cameras") == 0)
+			continue; // the documented [CarCameras] section
+
+		// The key is one model id or model name, or a comma-separated list of
+		// them (e.g. [Car494,502,503] or [Carhotring,hotrina,hotrinb]). Every
+		// key in the list shares this section's settings.
+		CarCamSettings s = base;
+
+		char tableBuf[32] = { 0 };
+		ReadTrimmed(section, "DistanceProfile", tableBuf, sizeof(tableBuf));
+		s.distanceProfile = ParseTableProfileName(tableBuf, base.distanceProfile);
+		tableBuf[0] = 0;
+		ReadTrimmed(section, "FOVProfile", tableBuf, sizeof(tableBuf));
+		s.fovProfile = ParseTableProfileName(tableBuf, base.fovProfile);
+		tableBuf[0] = 0;
+		ReadTrimmed(section, "AnglesProfile", tableBuf, sizeof(tableBuf));
+		s.anglesProfile = ParseTableProfileName(tableBuf, base.anglesProfile);
+
+		ReadFloatInto(section, "CustomDistanceNear", s.customDistNear);
+		ReadFloatInto(section, "CustomDistanceMid", s.customDistMid);
+		ReadFloatInto(section, "CustomDistanceFar", s.customDistFar);
+		ReadFloatInto(section, "CustomBaseFOV", s.customBaseFOV);
+		ReadAngleDegInto(section, "CustomAngleNear", s.customAngleNear);
+		ReadAngleDegInto(section, "CustomAngleMid", s.customAngleMid);
+		ReadAngleDegInto(section, "CustomAngleFar", s.customAngleFar);
+
+		ReadFloatInto(section, "CameraHeightOffset", s.cameraHeightOffset);
+		ReadFloatInto(section, "CameraLateralOffset", s.cameraLateralOffset);
+		ReadFloatInto(section, "CameraDistanceOffsetNear", s.cameraDistanceOffsetNear);
+		ReadFloatInto(section, "CameraDistanceOffsetMid", s.cameraDistanceOffsetMid);
+		ReadFloatInto(section, "CameraDistanceOffsetFar", s.cameraDistanceOffsetFar);
+		ReadFloatInto(section, "CameraMinDistance", s.cameraMinDistance);
+		ReadFloatInto(section, "CameraDistanceScale", s.cameraDistanceScale);
+		ReadFloatInto(section, "CameraDriverOffsetX", s.cameraDriverOffset.x);
+		ReadFloatInto(section, "CameraDriverOffsetY", s.cameraDriverOffset.y);
+		ReadFloatInto(section, "CameraDriverOffsetZ", s.cameraDriverOffset.z);
+
+		// Split the key on commas; each part is a numeric id or a model name.
+		std::string keyList(keyText);
+		size_t pos = 0;
+		for (;;) {
+			size_t comma = keyList.find(',', pos);
+			std::string token = keyList.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+
+			size_t first = token.find_first_not_of(" \t");
+			size_t last = token.find_last_not_of(" \t");
+			if (first == std::string::npos)
+				token.clear();
+			else
+				token = token.substr(first, last - first + 1);
+
+			if (!token.empty()) {
+				bool allDigits = true;
+				for (size_t c = 0; c < token.size(); c++) {
+					if (token[c] < '0' || token[c] > '9') {
+						allDigits = false;
+						break;
+					}
+				}
+				CarCameraEntry entry;
+				entry.settings = s;
+				if (allDigits) {
+					entry.modelIndex = atoi(token.c_str());
+					entry.name.clear();
+				} else {
+					entry.modelIndex = -1;
+					entry.name = token;
+				}
+				g_carCameraSettings.push_back(entry);
+			}
+
+			if (comma == std::string::npos)
+				break;
+			pos = comma + 1;
+		}
+	}
+}
+
 void LoadSettings()
 {
 	char iniPath[MAX_PATH];
@@ -125,6 +439,7 @@ void LoadSettings()
 			strcpy(iniPath, ".\\scripts\\III.VC.SA.ModernCarCam.ini");
 		}
 	}
+	strcpy(g_iniPath, iniPath);
 
 	char profile[32] = { 0 };
 	GetPrivateProfileStringA("General", "Profile", "Game", profile, sizeof(profile), iniPath);
@@ -154,15 +469,7 @@ void LoadSettings()
 
 	// Individual table overrides. They follow the main Profile unless set.
 	auto ParseTableProfile = [](const char* str, CameraProfileType def) -> CameraProfileType {
-		if (!str || !*str)
-			return def;
-		if (_stricmp(str, "SA") == 0 || _stricmp(str, "IV") == 0)
-			return PROFILE_SA;
-		if (_stricmp(str, "LCS") == 0 || _stricmp(str, "VCS") == 0)
-			return PROFILE_LCS;
-		if (_stricmp(str, "Custom") == 0)
-			return PROFILE_CUSTOM;
-		return PROFILE_VANILLA; // Game-Matched / III / VC / Original
+		return ParseTableProfileName(str, def);
 	};
 	char tableBuf[32] = { 0 };
 	GetPrivateProfileStringA("General", "DistanceProfile", "", tableBuf, sizeof(tableBuf), iniPath);
@@ -231,7 +538,9 @@ void LoadSettings()
 	// multiplicative, for the scale) deltas rather than replacements.
 	cameraHeightOffset += ReadFloat("Offsets", "CameraHeightOffset", 0.0f);
 	cameraLateralOffset += ReadFloat("Offsets", "CameraLateralOffset", 0.0f);
-	cameraDistanceOffset += ReadFloat("Offsets", "CameraDistanceOffset", 0.0f);
+	cameraDistanceOffsetNear += ReadFloat("Offsets", "CameraDistanceOffsetNear", 0.0f);
+	cameraDistanceOffsetMid += ReadFloat("Offsets", "CameraDistanceOffsetMid", 0.0f);
+	cameraDistanceOffsetFar += ReadFloat("Offsets", "CameraDistanceOffsetFar", 0.0f);
 	cameraDistanceScale *= ReadFloat("Offsets", "CameraDistanceScale", 1.0f);
 	cameraDriverOffset += CVector(
 		ReadFloat("Offsets", "CameraDriverOffsetX", 0.0f),
@@ -239,17 +548,25 @@ void LoadSettings()
 		ReadFloat("Offsets", "CameraDriverOffsetZ", 0.0f));
 	cameraMinDistance = ReadFloat("Offsets", "CameraMinDistance", -1.0f);
 
-	// [Custom] profile shape.
-	customDistNear = ReadFloat("Custom", "CustomDistanceNear", 0.05f);
-	customDistMid  = ReadFloat("Custom", "CustomDistanceMid", 1.9f);
-	customDistFar  = ReadFloat("Custom", "CustomDistanceFar", 3.9f);
+	// [Custom] profile shape. A blank key keeps the running game's own value, so
+	// Profile = Custom starts as the game camera and only the keys the user sets
+	// change it (the [Custom] section ships blank).
+	NativeCamShape nativeShape = GetNativeCamShape();
+	customDistNear = ReadFloat("Custom", "CustomDistanceNear", nativeShape.distNear);
+	customDistMid  = ReadFloat("Custom", "CustomDistanceMid", nativeShape.distMid);
+	customDistFar  = ReadFloat("Custom", "CustomDistanceFar", nativeShape.distFar);
 
-	customBaseFOV = ReadFloat("Custom", "CustomBaseFOV", 70.0f);
+	customBaseFOV = ReadFloat("Custom", "CustomBaseFOV", DefaultFOV);
 
 	// The ini expresses the camera angles in degrees; the engine stores radians.
-	customAngleNear = DEGTORAD(ReadFloat("Custom", "CustomAngleNear", -0.57f));
-	customAngleMid  = DEGTORAD(ReadFloat("Custom", "CustomAngleMid", 2.58f));
-	customAngleFar  = DEGTORAD(ReadFloat("Custom", "CustomAngleFar", 0.29f));
+	auto ReadAngle = [&](const char* key, float nativeRad) -> float {
+		char buf[64];
+		ReadTrimmed("Custom", key, buf, sizeof(buf));
+		return buf[0] ? DEGTORAD((float)atof(buf)) : nativeRad;
+	};
+	customAngleNear = ReadAngle("CustomAngleNear", nativeShape.angleNear);
+	customAngleMid  = ReadAngle("CustomAngleMid", nativeShape.angleMid);
+	customAngleFar  = ReadAngle("CustomAngleFar", nativeShape.angleFar);
 
 	buildCustomCameraTables();
 
@@ -312,4 +629,8 @@ void LoadSettings()
 		cameraAnchoring = 0.0f;
 		cameraStiffness = 1.0f;
 	}
+
+	// Per-car overrides start from these finished global settings, so this must
+	// run last. Each [Car<model id>] section changes only the keys it lists.
+	LoadCarCameraSections(iniPath);
 }

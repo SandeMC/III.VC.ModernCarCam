@@ -146,10 +146,22 @@ extern bool smoothSideView;                 // smooth side view: look left/right
 // [Offsets] - camera offsets, applied independently of the selected profile.
 extern float cameraHeightOffset;           // extra height in metres added to the camera target
 extern float cameraLateralOffset;          // side offset of the camera
-extern float cameraDistanceOffset;         // extra distance in metres
+extern float cameraDistanceOffsetNear;     // extra distance in metres, near zoom view
+extern float cameraDistanceOffsetMid;      // extra distance in metres, mid zoom view
+extern float cameraDistanceOffsetFar;      // extra distance in metres, far zoom view
 extern float cameraMinDistance;            // closest allowed distance
 extern float cameraDistanceScale;          // distance multiplier for the whole camera
 extern CVector cameraDriverOffset;         // target orbit offset, e.g. the IV driver seat
+
+// The [Offsets] distance offset matching the camera's current zoom view
+// (1 = near, 2 = mid, 3 = far). Anything else uses the mid offset.
+inline float CameraDistanceOffsetForZoom(int zoomIndicator) {
+	if (zoomIndicator == 1)
+		return cameraDistanceOffsetNear;
+	if (zoomIndicator == 3)
+		return cameraDistanceOffsetFar;
+	return cameraDistanceOffsetMid;
+}
 
 // [Custom] profile shape. Only used when a *Profile selector is Custom.
 extern float customDistNear;
@@ -164,6 +176,56 @@ extern float customAngleFar;
 
 // Debug-menu choice labels.
 extern const char *profileNames[];
+
+// ---------------------------------------------------------------------------
+// Per-car camera overrides
+//
+// An ini section named "Car" + a vehicle key gives that one car its own camera,
+// separate from the global Profile. The key is either the vehicle model id
+// ([Car400], [Car411], ...) or the model name as it appears in the game's data
+// files ([CarHOTRING], [CarYARDIE], ...), matched case-insensitively. A key may
+// also be a comma-separated list to cover several models with one section (for
+// example [Car494,502,503] or [Carhotring,hotrina,hotrinb]). Every
+// key is optional: the entry starts as a copy of the global settings and only
+// the keys it lists are changed, so omitted keys keep the global value.
+//
+// LoadSettings() parses the sections once. Process_FollowCar_SA applies the
+// matching entry for the frame and restores the global settings afterwards, so
+// the different camera applies only to that car. Any number of sections may be
+// added.
+// ---------------------------------------------------------------------------
+struct CarCamSettings {
+	CameraProfileType distanceProfile;
+	CameraProfileType fovProfile;
+	CameraProfileType anglesProfile;
+
+	float customDistNear;
+	float customDistMid;
+	float customDistFar;
+	float customBaseFOV;
+	float customAngleNear; // radians (the ini keys are degrees)
+	float customAngleMid;
+	float customAngleFar;
+
+	float cameraHeightOffset;
+	float cameraLateralOffset;
+	float cameraDistanceOffsetNear;
+	float cameraDistanceOffsetMid;
+	float cameraDistanceOffsetFar;
+	float cameraMinDistance;
+	float cameraDistanceScale;
+	CVector cameraDriverOffset;
+};
+
+// Reads the current global camera settings into out.
+void CaptureCarCamSettings(CarCamSettings& out);
+// Writes s into the global camera settings and rebuilds the Custom tables.
+void ApplyCarCamSettings(const CarCamSettings& s);
+// Returns the override for a vehicle model index, or nil if it has none.
+const CarCamSettings* FindCarCameraOverride(int modelIndex);
+// Re-reads the [Car<model id>] sections from the current ini. Called after a
+// profile change so per-car entries inherit the new global settings.
+void ReloadPerCarCameraSections(void);
 
 // ---------------------------------------------------------------------------
 // Per-game camera tables

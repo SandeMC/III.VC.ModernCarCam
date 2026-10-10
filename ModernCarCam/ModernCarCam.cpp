@@ -169,6 +169,9 @@ void onMasterProfileChange(void) {
 	// The menu edits the engine variables in place; the unit shadows need to
 	// follow the values applyProfile() just reset.
 	syncDebugMenuShadows();
+	// Per-car entries start from the global settings, so rebuild them against
+	// the profile applyProfile() just applied.
+	ReloadPerCarCameraSections();
 }
 
 // ---------------------------------------------------------------------------

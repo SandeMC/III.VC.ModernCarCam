@@ -26,6 +26,30 @@ inline bool MouseSteeringDisabled() {
 	return m_bDisableMouseSteering;
 }
 
+// San Andreas vehicles whose special feature (a moving part) is driven by the
+// same right-stick axes the vehicle camera reads. The numpad keys (2/4/6/8,
+// Del, End) are bound to VEHICLE_TURRET* and PED_1RST_PERSON_LOOK_*, which map
+// onto that stick, so without this the camera pivots while the feature moves.
+// The vanilla CCam::Process_FollowCar_SA zeroes the stick look for exactly
+// these model ids; the mod reads the stick directly, so it has to do the same.
+static bool IsSpecialFeatureVehicle(int modelIndex) {
+	switch (modelIndex) {
+	case 406: // Dumper
+	case 443: // Packer
+	case 486: // Dozer
+	case 520: // Hydra
+	case 524: // Cement
+	case 525: // Towtruck
+	case 530: // Forklift
+	case 531: // Tractor
+	case 564: // RC Tiger
+	case 592: // Andromada
+		return true;
+	default:
+		return false;
+	}
+}
+
 // Runs the authentic III/VC anchoring engine. Specialised to a no-op for SA:
 // San Andreas has no "camera on a string" vehicle mode, so anchoring is
 // ignored there (the SA follow camera always runs). The generic definition is
@@ -50,6 +74,30 @@ RunVanillaAnchor<CCamSA, CCameraSA, CVehicleSA, CWorldSA, CColModelSA>(CCameraSA
 {
 }
 
+// Applies a per-car [Car<model id>] camera override for the duration of the
+// camera call, then restores the global settings. The camera tables are rebuilt
+// on both apply and restore, so the change reaches the engine and leaves no
+// trace once the frame is done.
+namespace {
+class CarCameraScope {
+public:
+	explicit CarCameraScope(int modelIndex) : active(false) {
+		if (const CarCamSettings* override = FindCarCameraOverride(modelIndex)) {
+			CaptureCarCamSettings(saved);
+			ApplyCarCamSettings(*override);
+			active = true;
+		}
+	}
+	~CarCameraScope() {
+		if (active)
+			ApplyCarCamSettings(saved);
+	}
+private:
+	bool active;
+	CarCamSettings saved;
+};
+}
+
 template<class CamClass, class CameraClass, class VehicleClass, class WorldClass, class ColModelClass>
 void
 Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, const CVector& CameraTarget, float TargetOrientation)
@@ -71,6 +119,10 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 
 	if (!cam->CamTargetEntity->IsVehicle())
 		return;
+
+	// Swap in this car's [Car<model id>] camera override (if any) for the whole
+	// camera call; the scope restores the globals on every exit path.
+	CarCameraScope carCameraScope(car->m_modelIndex);
 
 	if (!ginputLoaded) {
 		if (GInput_Load(&ginputPad)) {
@@ -276,6 +328,30 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 			hackedZoomValue = zoomVal(0);
 	}
 
+	// San Andreas already has a per-vehicle zoom table, so CarZoomValueSmooth is
+	// the game's own distance and is used as-is for the SA profile. When the
+	// selected distance table is not SA's (the Custom profile, or LCS/VCS forced
+	// on SA) that table has to become the distance instead: map the game's SA
+	// zoom through it, exactly as the III/VC engines do (see CamVanilla). Without
+	// this the [Custom] distances have no effect on SA.
+	if (isSA() && (distanceProfile == PROFILE_CUSTOM || distanceProfile == PROFILE_LCS)) {
+		auto srcVal = [&](int row) { return CarZoomModesSA[alphaArrPos + row * 5]; };
+		auto dstVal = [&](int row) { return CarZoomModes[alphaArrPos + row * 5]; };
+		int ind = (int)TheCamera->CarZoomIndicator;
+		if (ind == 3)
+			hackedZoomValue = dstVal(2);
+		else if (ind == 2 && srcVal(2) != srcVal(1))
+			hackedZoomValue = dstVal(1) +
+				(hackedZoomValue - srcVal(1)) * (dstVal(2) - dstVal(1)) / (srcVal(2) - srcVal(1));
+		else if (ind == 1 && srcVal(1) != srcVal(0))
+			hackedZoomValue = dstVal(0) +
+				(hackedZoomValue - srcVal(0)) * (dstVal(1) - dstVal(0)) / (srcVal(1) - srcVal(0));
+
+		// Keep the zoom from creeping closer in tunnels and other cramped spots.
+		if (hackedZoomValue < dstVal(0))
+			hackedZoomValue = dstVal(0);
+	}
+
 	float newDistance;
 	float minDistForThisCar;
 	if (distanceProfile == PROFILE_VANILLA) {
@@ -314,7 +390,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 		newDistance += clamp(forwardSpeed * (2.0f / MaxForwardSpeed), -1.0f, 2.0f) * elasticStringPhysics;
 	}
 
-	newDistance += cameraDistanceOffset;
+	newDistance += CameraDistanceOffsetForZoom((int)TheCamera->CarZoomIndicator);
 	newDistance *= cameraDistanceScale;
 
 	if (distanceProfile == PROFILE_VANILLA || anglesProfile == PROFILE_VANILLA || distanceProfile == PROFILE_CUSTOM || anglesProfile == PROFILE_CUSTOM) {
@@ -716,6 +792,8 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	// The camera only follows the game's own camera-look bindings (the right
 	// stick or whatever the player has bound). No hard-coded numpad keys are added
 	// here, so the game's binds drive the camera exactly like the vanilla camera.
+	// The one exception is the moving-part vehicles, where the same bindings run
+	// the special feature instead; see specialFeatureVehicle below.
 	float stickX = (float)-(pad->GetCarGunLeftRight());
 	float stickY = (float)(pad->GetCarGunUpDown());
 
@@ -752,6 +830,16 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 
 	float xMovement = fabsf(stickX) * (v103 * 0.071428575) * stickX * 0.007f * 0.007f;
 	float yMovement = fabsf(stickY) * (v103 * 0.042857144) * stickY * 0.007f * 0.007f;
+
+	// On the moving-part vehicles the right stick drives the feature, not the
+	// camera, so the camera must ignore it. This mirrors where the vanilla
+	// camera zeroes the stick look. The mouse path below is separate and still
+	// works, so free look is not lost.
+	const bool specialFeatureVehicle = isSA() && IsSpecialFeatureVehicle(car->m_modelIndex);
+	if (specialFeatureVehicle) {
+		xMovement = 0.0f;
+		yMovement = 0.0f;
+	}
 
 	bool correctAlpha = true;
 	if (!isCar || car->m_modelIndex != CarWithHydraulics) {
@@ -833,7 +921,7 @@ Process_FollowCar_SA(CameraClass* TheCamera, CamClass* cam, VehicleClass* car, c
 	// instead of through SA's damped speed blending, which fights the player.
 	// This runs after the mouse block so a stick push is not cancelled by the
 	// mouse hold from the previous frame.
-	if ((mouseFreeLook || isSA()) && stickActive && !GetDisablePlayerControls(pad) && nextDirectionIsForward) {
+	if ((mouseFreeLook || isSA()) && stickActive && !GetDisablePlayerControls(pad) && nextDirectionIsForward && !specialFeatureVehicle) {
 		xMovement = fabsf(stickX) * (v103 * 0.071428575f) * stickX * 0.007f * 0.007f;
 		yMovement = fabsf(stickY) * (v103 * 0.042857144f) * stickY * 0.007f * 0.007f;
 		cam->BetaSpeed = 0.0f;

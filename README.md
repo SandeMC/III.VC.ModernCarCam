@@ -44,7 +44,8 @@ IV is an approximation of IVs feel applied on top of the SA camera; its exact di
 ## Features
 
 - One profile for the whole camera, with optional per-feature overrides
-- Faithful GTA III and Vice City vehicle cameras recreations, can add any feature on-top of them
+- Individual per-car camera configuration
+- Faithful GTA III, Vice City and San Andreas vehicle cameras recreations, can add any feature on-top of them
 - Free mouse look from San Andreas, with a smoothed gamepad right stick view
 - Free turret control from San Andreas (Rhino / Firetruck)
 - Modern drive-by aiming - aim where the camera looks, with an optional per-burst direction lock, separate for keyboard/mouse and gamepad

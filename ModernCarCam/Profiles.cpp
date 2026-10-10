@@ -179,7 +179,9 @@ void applyProfile(ModernProfile profile, bool vc) {
 	cameraReturnTime = 0.5f;           // seconds for the free-look auto-return
 	cameraHeightOffset = 0.0f;
 	cameraLateralOffset = 0.0f;
-	cameraDistanceOffset = 0.0f;
+	cameraDistanceOffsetNear = 0.0f;
+	cameraDistanceOffsetMid = 0.0f;
+	cameraDistanceOffsetFar = 0.0f;
 	cameraMinDistance = -1.0f;         // <0 = profile default
 	cameraDistanceScale = 1.0f;
 	cameraDriverOffset = CVector(0.0f, 0.0f, 0.0f);
